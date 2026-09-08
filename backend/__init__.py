@@ -1,0 +1,1 @@
+"""SmartWake AI Backend Package."""
