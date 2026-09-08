@@ -41,3 +41,34 @@ class InvalidDaysOfWeekError(SmartWakeException):
     pass
 
 
+class AlarmNotFoundError(SmartWakeException):
+    """Raised when a requested alarm does not exist."""
+    pass
+
+
+class WakeSessionNotFoundError(SmartWakeException):
+    """Raised when a requested wake session does not exist."""
+    pass
+
+
+class AlarmOwnershipError(SmartWakeException):
+    """Raised when an alarm does not belong to the specified user."""
+    pass
+
+
+class InactiveAlarmError(SmartWakeException):
+    """Raised when attempting to start a wake session for a deactivated alarm."""
+    pass
+
+
+class InvalidSessionTransitionError(SmartWakeException):
+    """Raised when an illegal or nonsensical wake session status transition is attempted."""
+    pass
+
+
+class ActiveSessionExistsError(SmartWakeException):
+    """Raised when an active wake session is already running for the specified alarm."""
+    pass
+
+
+
