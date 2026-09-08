@@ -11,9 +11,16 @@ from backend.app.database.base import Base
 class Alarm(Base):
     """Scheduled alarm configuration.
 
-    Stores the user's desired wake-up time and recurrence rules.
-    NOTE: The ML system adaptively selects the wake-up challenge and difficulty,
-    but must NOT automatically modify the user's explicit alarm time.
+    USER INPUTS:
+    - Desired alarm time (e.g., "07:00").
+    - User-selected challenge type ('dance', 'math', 'memory', 'tongue_twister', 'push_ups').
+    - User baseline difficulty preference ('adaptive', 'easy', 'medium', 'hard').
+
+    IMPORTANT PRODUCT RULE:
+    The USER chooses the wake-up task type when creating the alarm.
+    The ML system NEVER changes the user's alarm time and NEVER changes the user's chosen
+    task type. The ML system only adapts the difficulty, parameters, and generated content
+    within the user's selected task type.
     """
     __tablename__ = "alarms"
 
@@ -26,10 +33,13 @@ class Alarm(Base):
     days_of_week: Mapped[str] = mapped_column(
         String(50), default="[0,1,2,3,4]", nullable=False
     )  # JSON array string, e.g. "[0,1,2,3,4]" (0=Mon, 6=Sun)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    challenge_mode: Mapped[str] = mapped_column(
+    selected_challenge_type: Mapped[str] = mapped_column(
+        String(30), default="tongue_twister", nullable=False
+    )  # USER CHOICE: "dance", "math", "memory", "tongue_twister", "push_ups"
+    difficulty_preference: Mapped[str] = mapped_column(
         String(20), default="adaptive", nullable=False
-    )  # "adaptive" (AI/heuristic selected) or "manual"
+    )  # "adaptive" (ML tunes difficulty), "easy", "medium", "hard"
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

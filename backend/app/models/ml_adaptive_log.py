@@ -9,12 +9,20 @@ from backend.app.database.base import Base
 
 
 class MLAdaptiveLog(Base):
-    """Auditing and training ground-truth store for adaptive ML challenge selections.
+    """Auditing and training ground-truth store for adaptive ML challenge parameter decisions.
+
+    IMPORTANT PRODUCT RULE:
+    The USER chooses the wake-up task type when configuring the alarm.
+    The ML system NEVER selects or changes the task type.
+    The ML system ONLY adapts:
+      - difficulty level ('easy', 'medium', 'hard')
+      - challenge parameters (e.g. minimum word count, phonetic complexity bounds, rep count targets)
+      - dynamic generated content within the user's selected task type
 
     CRITICAL DATA LEAKAGE PREVENTION RULE:
     This model strictly snapshots the HISTORICAL and pre-challenge features available
-    at the exact moment of decision (e.g. prior days' rolling snoozes, past challenge
-    accuracy, current session snooze count prior to challenge, day of week, scheduled hour).
+    at the exact moment of decision (e.g. prior days' rolling snoozes, past accuracy in the
+    selected task type, current session snooze count prior to challenge, day of week, scheduled hour).
 
     The post-event outcomes of the CURRENT challenge (such as duration_seconds,
     is_successful, or dismissed_time) are NEVER stored here as input features. They are
@@ -33,12 +41,15 @@ class MLAdaptiveLog(Base):
     historical_features_snapshot: Mapped[str] = mapped_column(
         Text, nullable=False
     )  # Serialized JSON of historical/pre-challenge features used at decision time
-    selected_challenge_type: Mapped[str] = mapped_column(
+    user_selected_type: Mapped[str] = mapped_column(
         String(30), nullable=False
-    )  # "dance", "math", "memory", "tongue_twister", "push_ups"
-    selected_difficulty: Mapped[str] = mapped_column(
+    )  # USER CHOICE: "dance", "math", "memory", "tongue_twister", "push_ups"
+    adaptive_difficulty: Mapped[str] = mapped_column(
         String(20), nullable=False
-    )  # "easy", "medium", "hard"
+    )  # ML ADAPTATION: "easy", "medium", "hard"
+    adaptive_parameters: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # JSON string of adapted parameters (e.g., target sentence length, phonetic friction, target reps)
     model_policy_version: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # e.g. "rf_adaptive_v1.0" or "cold_start_heuristic_v1.0"
@@ -47,7 +58,7 @@ class MLAdaptiveLog(Base):
     )  # Model confidence or classification probability
     decision_rationale: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
-    )  # Human-interpretable explanation or heuristic rule trace for why this task was selected
+    )  # Explainable rationale (e.g. "User selected tongue_twister; historical performance supports medium difficulty.")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
@@ -56,5 +67,5 @@ class MLAdaptiveLog(Base):
     def __repr__(self) -> str:
         return (
             f"<MLAdaptiveLog id={self.id} session_id={self.wake_session_id} "
-            f"selected='{self.selected_challenge_type}_{self.selected_difficulty}'>"
+            f"user_type='{self.user_selected_type}' adaptive_diff='{self.adaptive_difficulty}'>"
         )
