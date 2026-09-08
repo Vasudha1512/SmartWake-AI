@@ -1,7 +1,11 @@
 """Pydantic schemas for Alarm request and response models."""
+import json
 from datetime import datetime
-from typing import List, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from backend.app.core.exceptions import InvalidDaysOfWeekError
+from backend.app.services.alarm_service import validate_days_of_week
 
 
 class AlarmCreate(BaseModel):
@@ -26,11 +30,24 @@ class AlarmCreate(BaseModel):
         description="Baseline difficulty preference: 'adaptive', 'easy', 'medium', 'hard'",
     )
     label: Optional[str] = Field("Alarm", max_length=100, description="Optional alarm label")
-    days_of_week: Optional[Union[str, List[int]]] = Field(
-        "[0,1,2,3,4]",
-        description="JSON string or integer list of active days (0=Mon, 6=Sun)",
+    days_of_week: Optional[List[int]] = Field(
+        default=[0, 1, 2, 3, 4],
+        description="List of active weekday integers (0=Mon, 6=Sun)",
     )
     is_active: Optional[bool] = Field(True, description="Master alarm active toggle switch")
+
+    @field_validator("days_of_week", mode="before")
+    @classmethod
+    def validate_days(cls, v: Any) -> Optional[List[int]]:
+        """Validate days_of_week JSON array input."""
+        if v is None:
+            return [0, 1, 2, 3, 4]
+        if isinstance(v, str):
+            raise ValueError("days_of_week must be a JSON array of integers, not a string.")
+        try:
+            return validate_days_of_week(v)
+        except InvalidDaysOfWeekError as exc:
+            raise ValueError(str(exc)) from exc
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -62,10 +79,23 @@ class AlarmUpdate(BaseModel):
         description="Baseline difficulty: 'adaptive', 'easy', 'medium', 'hard'",
     )
     label: Optional[str] = Field(None, max_length=100, description="Optional alarm label")
-    days_of_week: Optional[Union[str, List[int]]] = Field(
-        None, description="JSON string or integer list of active days"
+    days_of_week: Optional[List[int]] = Field(
+        None, description="List of active weekday integers (0=Mon, 6=Sun)"
     )
     is_active: Optional[bool] = Field(None, description="Master alarm active toggle switch")
+
+    @field_validator("days_of_week", mode="before")
+    @classmethod
+    def validate_days(cls, v: Any) -> Optional[List[int]]:
+        """Validate days_of_week JSON array input."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            raise ValueError("days_of_week must be a JSON array of integers, not a string.")
+        try:
+            return validate_days_of_week(v)
+        except InvalidDaysOfWeekError as exc:
+            raise ValueError(str(exc)) from exc
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -74,6 +104,7 @@ class AlarmUpdate(BaseModel):
                 "selected_challenge_type": "math",
                 "difficulty_preference": "medium",
                 "label": "Updated Routine",
+                "days_of_week": [0, 1, 2, 3, 4],
                 "is_active": True,
             }
         }
@@ -86,7 +117,7 @@ class AlarmResponse(BaseModel):
     user_id: int
     time: str
     label: Optional[str] = None
-    days_of_week: str
+    days_of_week: List[int]
     selected_challenge_type: str
     difficulty_preference: str
     is_active: bool
@@ -94,3 +125,18 @@ class AlarmResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("days_of_week", mode="before")
+    @classmethod
+    def deserialize_days(cls, v: Any) -> List[int]:
+        """Deserialize JSON string or list into sorted List[int]."""
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception as exc:
+                raise ValueError(f"Invalid days_of_week stored in database: {exc}") from exc
+        try:
+            return validate_days_of_week(v)
+        except InvalidDaysOfWeekError as exc:
+            raise ValueError(str(exc)) from exc
+

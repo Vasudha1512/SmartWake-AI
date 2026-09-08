@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.exceptions import (
     InvalidAlarmTimeError,
     InvalidChallengeTypeError,
+    InvalidDaysOfWeekError,
     InvalidDifficultyError,
     UserNotFoundError,
 )
@@ -42,7 +43,7 @@ def create_alarm_endpoint(
             selected_challenge_type=alarm_in.selected_challenge_type,
             difficulty_preference=alarm_in.difficulty_preference,
             label=alarm_in.label or "Alarm",
-            days_of_week=alarm_in.days_of_week or "[0,1,2,3,4]",
+            days_of_week=alarm_in.days_of_week,
             is_active=True if alarm_in.is_active is None else alarm_in.is_active,
         )
         return alarm
@@ -51,7 +52,12 @@ def create_alarm_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    except (InvalidAlarmTimeError, InvalidChallengeTypeError, InvalidDifficultyError) as exc:
+    except (
+        InvalidAlarmTimeError,
+        InvalidChallengeTypeError,
+        InvalidDifficultyError,
+        InvalidDaysOfWeekError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
@@ -110,11 +116,39 @@ def update_alarm_endpoint(
                 detail=f"Alarm with id {alarm_id} not found.",
             )
         return updated_alarm
-    except (InvalidAlarmTimeError, InvalidChallengeTypeError, InvalidDifficultyError) as exc:
+    except (
+        InvalidAlarmTimeError,
+        InvalidChallengeTypeError,
+        InvalidDifficultyError,
+        InvalidDaysOfWeekError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+
+
+@router.patch(
+    "/{alarm_id}/toggle",
+    response_model=AlarmResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Toggle Alarm Active State",
+)
+def toggle_alarm_endpoint(
+    alarm_id: int,
+    db: Session = Depends(get_db),
+):
+    """Toggle an alarm's active state between enabled (True) and disabled (False).
+
+    Preserves historical relationships and returns the updated AlarmResponse.
+    """
+    toggled_alarm = alarm_service.toggle_alarm(db=db, alarm_id=alarm_id)
+    if not toggled_alarm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Alarm with id {alarm_id} not found.",
+        )
+    return toggled_alarm
 
 
 @router.delete(
@@ -126,7 +160,11 @@ def delete_alarm_endpoint(
     alarm_id: int,
     db: Session = Depends(get_db),
 ):
-    """Delete an alarm configuration by primary key ID."""
+    """Deactivate (logically delete) an alarm by primary key ID.
+
+    Preserves the alarm row in the database with is_active = False to protect
+    historical wake-session and ML telemetry.
+    """
     deleted = alarm_service.delete_alarm(db=db, alarm_id=alarm_id)
     if not deleted:
         raise HTTPException(
@@ -134,3 +172,4 @@ def delete_alarm_endpoint(
             detail=f"Alarm with id {alarm_id} not found.",
         )
     return {"detail": f"Alarm with id {alarm_id} deleted successfully."}
+

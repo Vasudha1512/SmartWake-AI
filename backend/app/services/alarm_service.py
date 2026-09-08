@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.exceptions import (
     InvalidAlarmTimeError,
     InvalidChallengeTypeError,
+    InvalidDaysOfWeekError,
     InvalidDifficultyError,
     UserNotFoundError,
 )
@@ -100,6 +101,76 @@ def validate_difficulty_preference(difficulty: str) -> str:
     return clean_diff
 
 
+def validate_days_of_week(days: Union[List[int], str, None]) -> List[int]:
+    """Validate and normalize alarm days of the week.
+
+    Conventions:
+      0 = Monday, 1 = Tuesday, 2 = Wednesday, 3 = Thursday,
+      4 = Friday, 5 = Saturday, 6 = Sunday.
+
+    Rules:
+      - Defaults to [0, 1, 2, 3, 4] (Mon-Fri) if days is None.
+      - Minimum 1 day, maximum 7 days.
+      - Each day must be an integer between 0 and 6.
+      - No duplicate days allowed (rejected, not silently deduped).
+      - Unordered valid input is normalized by sorting.
+      - Rejects non-integers (strings, floats, booleans).
+      - Rejects invalid JSON strings.
+
+    Args:
+        days: List of weekday integers, valid JSON array string, or None.
+
+    Returns:
+        Sorted list of unique weekday integers (e.g. [0, 1, 2, 3, 4]).
+
+    Raises:
+        InvalidDaysOfWeekError: If days format, length, elements, or ranges are invalid.
+    """
+    if days is None:
+        return [0, 1, 2, 3, 4]
+
+    if isinstance(days, str):
+        try:
+            parsed = json.loads(days)
+        except Exception as exc:
+            raise InvalidDaysOfWeekError(
+                f"Invalid days_of_week JSON string '{days}': must be a valid JSON array."
+            ) from exc
+        if not isinstance(parsed, list):
+            raise InvalidDaysOfWeekError(
+                f"days_of_week string must parse to a JSON array, got: {type(parsed).__name__}."
+            )
+        days = parsed
+
+    if not isinstance(days, list):
+        raise InvalidDaysOfWeekError(
+            f"days_of_week must be a list of integers, got: {type(days).__name__}."
+        )
+
+    if len(days) == 0:
+        raise InvalidDaysOfWeekError("days_of_week must contain at least 1 day (0-6).")
+
+    if len(days) > 7:
+        raise InvalidDaysOfWeekError("days_of_week cannot contain more than 7 days.")
+
+    for d in days:
+        if type(d) is not int:
+            raise InvalidDaysOfWeekError(
+                f"days_of_week elements must be integers, got {type(d).__name__}: {d}."
+            )
+        if d < 0 or d > 6:
+            raise InvalidDaysOfWeekError(
+                f"days_of_week values must be between 0 (Mon) and 6 (Sun), got: {d}."
+            )
+
+    if len(days) != len(set(days)):
+        raise InvalidDaysOfWeekError(
+            f"days_of_week cannot contain duplicate days: {days}."
+        )
+
+    return sorted(days)
+
+
 def create_alarm(
     db: Session,
     user_id: int,
@@ -107,7 +178,7 @@ def create_alarm(
     selected_challenge_type: str,
     difficulty_preference: str = "adaptive",
     label: str = "Alarm",
-    days_of_week: Union[str, List[int]] = "[0,1,2,3,4]",
+    days_of_week: Optional[Union[List[int], str]] = None,
     is_active: bool = True,
 ) -> Alarm:
     """Create a new Alarm record for an existing User.
@@ -125,7 +196,7 @@ def create_alarm(
         selected_challenge_type: User's chosen challenge ('dance', 'math', 'memory', 'tongue_twister', 'push_ups').
         difficulty_preference: User's baseline difficulty ('adaptive', 'easy', 'medium', 'hard').
         label: Custom label for the alarm.
-        days_of_week: JSON array string or list of integers (0=Mon, 6=Sun).
+        days_of_week: List of weekday integers (0=Mon, 6=Sun), JSON array string, or None.
         is_active: Master toggle flag for the alarm.
 
     Returns:
@@ -136,6 +207,7 @@ def create_alarm(
         InvalidAlarmTimeError: If time format is invalid.
         InvalidChallengeTypeError: If challenge type is unsupported.
         InvalidDifficultyError: If difficulty preference is invalid.
+        InvalidDaysOfWeekError: If days_of_week configuration is invalid.
     """
     # 1. Verify that referenced user exists
     user = db.get(User, user_id)
@@ -146,12 +218,10 @@ def create_alarm(
     clean_time = validate_alarm_time(time)
     clean_challenge_type = validate_challenge_type(selected_challenge_type)
     clean_difficulty = validate_difficulty_preference(difficulty_preference)
+    clean_days = validate_days_of_week(days_of_week)
 
-    # 3. Format days_of_week
-    if isinstance(days_of_week, list):
-        days_str = json.dumps(days_of_week)
-    else:
-        days_str = days_of_week.strip() if days_of_week else "[0,1,2,3,4]"
+    # 3. Format days_of_week as JSON string for SQLite storage
+    days_str = json.dumps(clean_days)
 
     # 4. Instantiate model
     alarm = Alarm(
@@ -235,6 +305,7 @@ def update_alarm(
         InvalidAlarmTimeError: If new time format is invalid.
         InvalidChallengeTypeError: If new challenge type is unsupported.
         InvalidDifficultyError: If new difficulty preference is invalid.
+        InvalidDaysOfWeekError: If days_of_week configuration is invalid.
     """
     alarm = db.get(Alarm, alarm_id)
     if not alarm:
@@ -253,10 +324,8 @@ def update_alarm(
         alarm.label = label.strip()
 
     if days_of_week is not None:
-        if isinstance(days_of_week, list):
-            alarm.days_of_week = json.dumps(days_of_week)
-        else:
-            alarm.days_of_week = days_of_week.strip()
+        clean_days = validate_days_of_week(days_of_week)
+        alarm.days_of_week = json.dumps(clean_days)
 
     if is_active is not None:
         alarm.is_active = is_active
@@ -270,24 +339,71 @@ def update_alarm(
         raise
 
 
-def delete_alarm(db: Session, alarm_id: int) -> bool:
-    """Delete an alarm by primary key ID.
+def deactivate_alarm(db: Session, alarm_id: int) -> Optional[Alarm]:
+    """Deactivate (logically delete) an alarm by primary key ID.
+
+    Sets is_active to False to preserve historical alarm configuration
+    and wake-session telemetry for future ML analytics. Does NOT physically
+    delete the Alarm row from the database.
 
     Args:
         db: Active SQLAlchemy database session.
-        alarm_id: ID of the alarm to delete.
+        alarm_id: ID of the alarm to deactivate.
 
     Returns:
-        True if the alarm was found and deleted, False if not found.
+        The updated Alarm instance with is_active=False, or None if not found.
     """
     alarm = db.get(Alarm, alarm_id)
     if not alarm:
-        return False
+        return None
 
     try:
-        db.delete(alarm)
+        alarm.is_active = False
         db.commit()
-        return True
+        db.refresh(alarm)
+        return alarm
     except Exception:
         db.rollback()
         raise
+
+
+def toggle_alarm(db: Session, alarm_id: int) -> Optional[Alarm]:
+    """Toggle an alarm's active state between enabled (True) and disabled (False).
+
+    Args:
+        db: Active SQLAlchemy database session.
+        alarm_id: ID of the alarm to toggle.
+
+    Returns:
+        The updated Alarm instance with toggled is_active, or None if not found.
+    """
+    alarm = db.get(Alarm, alarm_id)
+    if not alarm:
+        return None
+
+    try:
+        alarm.is_active = not alarm.is_active
+        db.commit()
+        db.refresh(alarm)
+        return alarm
+    except Exception:
+        db.rollback()
+        raise
+
+
+def delete_alarm(db: Session, alarm_id: int) -> bool:
+    """Logically delete (deactivate) an alarm by primary key ID.
+
+    Preserves historical relationships for future ML and wake session analysis.
+    Sets is_active = False rather than issuing a physical SQL delete.
+
+    Args:
+        db: Active SQLAlchemy database session.
+        alarm_id: ID of the alarm to deactivate.
+
+    Returns:
+        True if the alarm was found and deactivated, False if not found.
+    """
+    alarm = deactivate_alarm(db=db, alarm_id=alarm_id)
+    return alarm is not None
+

@@ -29,3 +29,15 @@ class InvalidDifficultyError(SmartWakeException):
 class InvalidAlarmTimeError(SmartWakeException):
     """Raised when alarm time does not match 24-hour 'HH:MM' format."""
     pass
+
+
+class InvalidTimezoneError(SmartWakeException):
+    """Raised when an invalid or unresolvable IANA timezone is specified."""
+    pass
+
+
+class InvalidDaysOfWeekError(SmartWakeException):
+    """Raised when an invalid days_of_week configuration is specified."""
+    pass
+
+

@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.app.core.exceptions import UserAlreadyExistsError
+from backend.app.core.exceptions import InvalidTimezoneError, UserAlreadyExistsError
 from backend.app.database.session import get_db
 from backend.app.schemas.alarm_schemas import AlarmResponse
 from backend.app.schemas.user_schemas import UserCreate, UserResponse
@@ -28,7 +28,7 @@ def create_user_endpoint(
             db=db,
             username=user_in.username,
             email=user_in.email,
-            timezone=user_in.timezone or "UTC",
+            timezone=user_in.timezone,
         )
         return user
     except UserAlreadyExistsError as exc:
@@ -36,7 +36,7 @@ def create_user_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    except ValueError as exc:
+    except (ValueError, InvalidTimezoneError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),

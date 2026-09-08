@@ -3,6 +3,7 @@ from backend.app.services.user_service import (
     create_user,
     get_user_by_id,
     get_user_by_username,
+    validate_timezone,
 )
 from backend.app.services.alarm_service import (
     VALID_CHALLENGE_TYPES,
@@ -12,23 +13,30 @@ from backend.app.services.alarm_service import (
     get_alarms_by_user,
     update_alarm,
     delete_alarm,
+    deactivate_alarm,
+    toggle_alarm,
     validate_alarm_time,
     validate_challenge_type,
     validate_difficulty_preference,
+    validate_days_of_week,
 )
 
 __all__ = [
     "create_user",
     "get_user_by_id",
     "get_user_by_username",
+    "validate_timezone",
     "create_alarm",
     "get_alarm_by_id",
     "get_alarms_by_user",
     "update_alarm",
     "delete_alarm",
+    "deactivate_alarm",
+    "toggle_alarm",
     "validate_alarm_time",
     "validate_challenge_type",
     "validate_difficulty_preference",
+    "validate_days_of_week",
     "VALID_CHALLENGE_TYPES",
     "VALID_DIFFICULTIES",
 ]

@@ -100,6 +100,9 @@ class SimpleASGIClient:
     def put(self, path: str, json: dict = None, headers: dict = None):
         return self._request("PUT", path, json_data=json, headers=headers)
 
+    def patch(self, path: str, json: dict = None, headers: dict = None):
+        return self._request("PATCH", path, json_data=json, headers=headers)
+
     def delete(self, path: str, headers: dict = None):
         return self._request("DELETE", path, headers=headers)
 
@@ -499,7 +502,7 @@ class TestApiEndpoints(unittest.TestCase):
         self.assertIn("not found", resp.json()["detail"].lower())
 
     def test_delete_alarm_success(self):
-        """Verify deleting an existing alarm returns 200 and subsequent GET returns 404."""
+        """Verify deleting an alarm deactivates it (is_active=False) while preserving the record."""
         u_resp = self.client.post("/api/v1/users", json={"username": "delete_tester"})
         user_id = u_resp.json()["id"]
 
@@ -517,9 +520,10 @@ class TestApiEndpoints(unittest.TestCase):
         del_resp = self.client.delete(f"/api/v1/alarms/{alarm_id}")
         self.assertEqual(del_resp.status_code, 200)
 
-        # Confirm it is no longer retrievable
+        # Confirm the record still exists and is deactivated (is_active == False)
         get_resp = self.client.get(f"/api/v1/alarms/{alarm_id}")
-        self.assertEqual(get_resp.status_code, 404)
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertFalse(get_resp.json()["is_active"])
 
     def test_delete_alarm_not_found(self):
         """Verify deleting a non-existent alarm returns 404."""
