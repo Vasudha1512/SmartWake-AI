@@ -1,4 +1,4 @@
-"""Application configuration and environment settings."""
+import os
 from typing import List
 
 
@@ -14,6 +14,8 @@ class Settings:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
     ]
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./smartwake.db")
 
 
 settings = Settings()
+
