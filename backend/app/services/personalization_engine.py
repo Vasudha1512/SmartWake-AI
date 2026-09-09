@@ -1,0 +1,401 @@
+"""Personalization Engine Services for SmartWake AI (Phase 3.3).
+
+Contains deterministic personalization policies:
+1. ColdStartRouter: Lifecycle routing for Stage 0 (heuristics), Stage 1 (contextual rules),
+   and Stage 2 (ML model handoff).
+2. SafetyGuardrails: Operational safety boundaries enforcing maximum difficulty step-shift
+   limits and sleep inertia floors.
+
+PRECEDENCE RULES:
+1. User-fixed difficulty is evaluated first (at engine level; bypassed here).
+2. Adaptive candidate difficulty is produced (via cold-start router or ML).
+3. Maximum step-shift guardrail is applied (+-1 tier relative to previous_difficulty).
+4. Sleep-inertia floor guardrail is applied (caps hard at medium if snooze count >= 3).
+5. Final difficulty must strictly resolve to 'easy', 'medium', or 'hard'.
+   'adaptive' is never a final concrete challenge difficulty.
+"""
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+from backend.app.schemas.personalization_schemas import (
+    VALID_DIFFICULTY_LEVELS,
+    DecisionSource,
+    DifficultyLevel,
+    PersonalizationContext,
+)
+
+# Canonical ordering of difficulty levels for step-shift calculations
+DIFFICULTY_ORDER: List[str] = [
+    DifficultyLevel.EASY.value,
+    DifficultyLevel.MEDIUM.value,
+    DifficultyLevel.HARD.value,
+]
+DIFFICULTY_INDEX: Dict[str, int] = {
+    diff: idx for idx, diff in enumerate(DIFFICULTY_ORDER)
+}
+
+# Task categorization for Stage 0 cold-start heuristics
+HIGH_COGNITIVE_CHALLENGES = {"math", "memory"}
+PHYSICAL_SPEECH_CHALLENGES = {"dance", "tongue_twister", "push_ups"}
+
+
+@dataclass
+class ColdStartResult:
+    """Result from cold-start lifecycle routing.
+
+    Attributes:
+        stage: The evaluated cold-start lifecycle stage (0, 1, or 2).
+        requires_ml: True if user history warrants full ML model inference (Stage 2).
+        candidate_difficulty: Proposed difficulty tier, or None if ML is required.
+        decision_source: The associated DecisionSource enum, or None if ML is required.
+        rule_reason: Descriptive explanation of the cold-start rule application.
+    """
+
+    stage: int
+    requires_ml: bool
+    candidate_difficulty: Optional[str]
+    decision_source: Optional[DecisionSource]
+    rule_reason: Optional[str]
+
+
+@dataclass
+class GuardrailResult:
+    """Result from applying operational safety guardrails to a candidate difficulty.
+
+    Attributes:
+        final_difficulty: The resulting difficulty tier ('easy', 'medium', 'hard').
+        guardrail_applied: True if any guardrail modified the candidate difficulty.
+        guardrail_reason: Semicolon-separated explanations of applied guardrails, or None.
+        raw_difficulty: The original candidate difficulty before guardrails.
+        step_shift_applied: True if max step shift clamped the candidate difficulty.
+        sleep_inertia_applied: True if sleep inertia floor clamped 'hard' to 'medium'.
+    """
+
+    final_difficulty: str
+    guardrail_applied: bool
+    guardrail_reason: Optional[str]
+    raw_difficulty: str
+    step_shift_applied: bool
+    sleep_inertia_applied: bool
+
+
+class SafetyGuardrails:
+    """Operational safety boundaries for SmartWake AI difficulty adaptation.
+
+    Guarantees:
+    1. Maximum Step Shift: Difficulty cannot jump more than +-1 level from
+       the previous session baseline (e.g. easy -> hard is clamped to medium).
+    2. Sleep Inertia Floor: If current_session_snooze_count >= 3, difficulty is
+       capped at 'medium' (never 'hard') to prevent frustration/abandonment.
+    3. Output difficulty is strictly concrete ('easy', 'medium', 'hard').
+    """
+
+    @staticmethod
+    def clamp_step_shift(
+        candidate_difficulty: str,
+        previous_difficulty: Optional[str],
+    ) -> Tuple[str, bool, Optional[str]]:
+        """Clamp candidate difficulty to at most +-1 step from previous difficulty.
+
+        Args:
+            candidate_difficulty: The candidate difficulty ('easy', 'medium', 'hard').
+            previous_difficulty: Previous successful difficulty tier if available.
+
+        Returns:
+            Tuple of (clamped_difficulty, was_clamped, clamp_reason).
+        """
+        cand_clean = candidate_difficulty.strip().lower()
+        if cand_clean not in DIFFICULTY_INDEX:
+            raise ValueError(
+                f"Invalid candidate difficulty '{candidate_difficulty}'. "
+                f"Must be one of: {VALID_DIFFICULTY_LEVELS}."
+            )
+
+        if not previous_difficulty:
+            return cand_clean, False, None
+
+        prev_clean = previous_difficulty.strip().lower()
+        if prev_clean not in DIFFICULTY_INDEX:
+            return cand_clean, False, None
+
+        cand_idx = DIFFICULTY_INDEX[cand_clean]
+        prev_idx = DIFFICULTY_INDEX[prev_clean]
+        diff = cand_idx - prev_idx
+
+        if diff > 1:
+            clamped_idx = prev_idx + 1
+            clamped_diff = DIFFICULTY_ORDER[clamped_idx]
+            reason = (
+                f"Maximum step shift clamped: candidate '{cand_clean}' clamped to "
+                f"'{clamped_diff}' (+1 step from previous '{prev_clean}')"
+            )
+            return clamped_diff, True, reason
+        elif diff < -1:
+            clamped_idx = prev_idx - 1
+            clamped_diff = DIFFICULTY_ORDER[clamped_idx]
+            reason = (
+                f"Maximum step shift clamped: candidate '{cand_clean}' clamped to "
+                f"'{clamped_diff}' (-1 step from previous '{prev_clean}')"
+            )
+            return clamped_diff, True, reason
+
+        return cand_clean, False, None
+
+    @staticmethod
+    def apply_sleep_inertia_floor(
+        difficulty: str,
+        current_session_snooze_count: int,
+    ) -> Tuple[str, bool, Optional[str]]:
+        """Cap difficulty at medium if current session snooze count >= 3.
+
+        Args:
+            difficulty: Candidate difficulty tier.
+            current_session_snooze_count: Count of snoozes in the current session.
+
+        Returns:
+            Tuple of (adjusted_difficulty, was_clamped, clamp_reason).
+        """
+        clean_diff = difficulty.strip().lower()
+        if current_session_snooze_count >= 3 and clean_diff == DifficultyLevel.HARD.value:
+            reason = (
+                f"Sleep inertia floor applied: snooze count "
+                f"({current_session_snooze_count} >= 3) capped 'hard' to 'medium'"
+            )
+            return DifficultyLevel.MEDIUM.value, True, reason
+        return clean_diff, False, None
+
+    @classmethod
+    def apply_guardrails(
+        cls,
+        candidate_difficulty: str,
+        previous_difficulty: Optional[str] = None,
+        current_session_snooze_count: int = 0,
+    ) -> GuardrailResult:
+        """Apply all safety guardrails in strict precedence order.
+
+        Precedence:
+        1. Max step-shift clamp relative to previous_difficulty.
+        2. Sleep inertia floor relative to current snooze count.
+
+        Args:
+            candidate_difficulty: The initial candidate difficulty tier.
+            previous_difficulty: Optional previous successful difficulty tier.
+            current_session_snooze_count: Number of snoozes pressed this morning.
+
+        Returns:
+            GuardrailResult with final concrete difficulty and audit telemetry.
+        """
+        raw = candidate_difficulty.strip().lower()
+        reasons: List[str] = []
+
+        # 1. Step-shift guardrail
+        after_shift, shift_applied, shift_reason = cls.clamp_step_shift(
+            raw, previous_difficulty
+        )
+        if shift_applied and shift_reason:
+            reasons.append(shift_reason)
+
+        # 2. Sleep inertia floor guardrail
+        final_diff, inertia_applied, inertia_reason = cls.apply_sleep_inertia_floor(
+            after_shift, current_session_snooze_count
+        )
+        if inertia_applied and inertia_reason:
+            reasons.append(inertia_reason)
+
+        guardrail_applied = shift_applied or inertia_applied
+        combined_reason = "; ".join(reasons) if reasons else None
+
+        return GuardrailResult(
+            final_difficulty=final_diff,
+            guardrail_applied=guardrail_applied,
+            guardrail_reason=combined_reason,
+            raw_difficulty=raw,
+            step_shift_applied=shift_applied,
+            sleep_inertia_applied=inertia_applied,
+        )
+
+
+class ColdStartRouter:
+    """Evaluates the user's historical lifecycle and routes cold-start decisions.
+
+    Lifecycle Stages:
+    - Stage 0 (0-3 historical sessions): Pure task-type and snooze heuristics.
+    - Stage 1 (4-7 historical sessions): Contextual rules using recent performance.
+    - Stage 2 (8+ historical sessions): Active ML policy (unresolved; requires ML).
+    """
+
+    @staticmethod
+    def get_stage(historical_session_count: int) -> int:
+        """Determine lifecycle stage from historical session count."""
+        if historical_session_count <= 3:
+            return 0
+        elif historical_session_count <= 7:
+            return 1
+        return 2
+
+    @staticmethod
+    def evaluate_stage_0(
+        challenge_type: str,
+        current_session_snooze_count: int = 0,
+    ) -> Tuple[str, str]:
+        """Evaluate Stage 0 heuristics.
+
+        Rules:
+        - math/memory -> easy
+        - dance/tongue_twister/push_ups -> medium
+        - current_session_snooze_count >= 2 -> downgrade to easy
+
+        Args:
+            challenge_type: Canonical challenge type.
+            current_session_snooze_count: Snoozes in the current session.
+
+        Returns:
+            Tuple of (candidate_difficulty, rule_reason).
+        """
+        c_clean = challenge_type.strip().lower()
+
+        # Task demand heuristic
+        if c_clean in HIGH_COGNITIVE_CHALLENGES:
+            base_diff = DifficultyLevel.EASY.value
+            reason = f"Stage 0 heuristic: high-cognitive challenge '{c_clean}' defaults to 'easy'."
+        else:
+            base_diff = DifficultyLevel.MEDIUM.value
+            reason = f"Stage 0 heuristic: physical/speech challenge '{c_clean}' defaults to 'medium'."
+
+        # Snooze inertia downgrade heuristic
+        if current_session_snooze_count >= 2:
+            base_diff = DifficultyLevel.EASY.value
+            reason += (
+                f" Downgraded to 'easy' due to snooze count "
+                f"({current_session_snooze_count} >= 2)."
+            )
+
+        return base_diff, reason
+
+    @staticmethod
+    def evaluate_stage_1(
+        baseline_difficulty: Optional[str] = None,
+        recent_success_rate: Optional[float] = None,
+        recent_avg_duration_seconds: Optional[float] = None,
+        has_recent_failure: bool = False,
+    ) -> Tuple[str, str]:
+        """Evaluate Stage 1 contextual moving average rules.
+
+        Rules:
+        - recent failure OR avg duration > 40.0s -> easy
+        - recent success rate == 100% AND avg duration < 15.0s -> promote baseline by +1 level
+        - otherwise -> medium
+
+        Args:
+            baseline_difficulty: Baseline difficulty to adjust from (defaults to 'medium').
+            recent_success_rate: Rolling success rate (1.0 = 100%).
+            recent_avg_duration_seconds: Average challenge completion speed in seconds.
+            has_recent_failure: True if any recent attempt was failed or abandoned.
+
+        Returns:
+            Tuple of (candidate_difficulty, rule_reason).
+        """
+        base = (
+            baseline_difficulty.strip().lower()
+            if baseline_difficulty and baseline_difficulty.strip().lower() in DIFFICULTY_INDEX
+            else DifficultyLevel.MEDIUM.value
+        )
+
+        # 1. Failure / Slow completion demotion rule
+        if has_recent_failure or (
+            recent_avg_duration_seconds is not None and recent_avg_duration_seconds > 40.0
+        ):
+            triggers = []
+            if has_recent_failure:
+                triggers.append("recent failure occurred")
+            if recent_avg_duration_seconds is not None and recent_avg_duration_seconds > 40.0:
+                triggers.append(
+                    f"slow completion time ({recent_avg_duration_seconds:.1f}s > 40s)"
+                )
+            reason = f"Stage 1 rule: resolved to 'easy' due to {', '.join(triggers)}."
+            return DifficultyLevel.EASY.value, reason
+
+        # 2. Mastery promotion rule (100% success rate AND completion time < 15.0s)
+        if (
+            recent_success_rate is not None
+            and recent_success_rate >= 1.0
+            and recent_avg_duration_seconds is not None
+            and recent_avg_duration_seconds < 15.0
+        ):
+            curr_idx = DIFFICULTY_INDEX[base]
+            promoted_idx = min(curr_idx + 1, len(DIFFICULTY_ORDER) - 1)
+            promoted_diff = DIFFICULTY_ORDER[promoted_idx]
+            reason = (
+                f"Stage 1 rule: 100% success rate and fast completion "
+                f"({recent_avg_duration_seconds:.1f}s < 15s) promotes baseline '{base}' to '{promoted_diff}'."
+            )
+            return promoted_diff, reason
+
+        # 3. Standard balanced engagement rule
+        reason = "Stage 1 rule: standard balanced engagement resolves to 'medium'."
+        return DifficultyLevel.MEDIUM.value, reason
+
+    @classmethod
+    def route(
+        cls,
+        context: PersonalizationContext,
+        recent_success_rate: Optional[float] = None,
+        recent_avg_duration_seconds: Optional[float] = None,
+        has_recent_failure: bool = False,
+    ) -> ColdStartResult:
+        """Route personalization context through the appropriate cold-start stage.
+
+        Note:
+            The cold-start router NEVER changes context.challenge_type.
+
+        Args:
+            context: PersonalizationContext containing user and session context.
+            recent_success_rate: Optional recent 3-session success rate for Stage 1.
+            recent_avg_duration_seconds: Optional average completion time for Stage 1.
+            has_recent_failure: Optional indicator of recent failure for Stage 1.
+
+        Returns:
+            ColdStartResult indicating stage, candidate difficulty, and whether ML is required.
+        """
+        stage = cls.get_stage(context.historical_session_count)
+
+        if stage == 0:
+            diff, reason = cls.evaluate_stage_0(
+                challenge_type=context.challenge_type,
+                current_session_snooze_count=context.current_session_snooze_count,
+            )
+            return ColdStartResult(
+                stage=0,
+                requires_ml=False,
+                candidate_difficulty=diff,
+                decision_source=DecisionSource.COLD_START_STAGE_0,
+                rule_reason=reason,
+            )
+
+        elif stage == 1:
+            diff, reason = cls.evaluate_stage_1(
+                baseline_difficulty=context.previous_difficulty,
+                recent_success_rate=recent_success_rate,
+                recent_avg_duration_seconds=recent_avg_duration_seconds,
+                has_recent_failure=has_recent_failure,
+            )
+            return ColdStartResult(
+                stage=1,
+                requires_ml=False,
+                candidate_difficulty=diff,
+                decision_source=DecisionSource.COLD_START_STAGE_1,
+                rule_reason=reason,
+            )
+
+        else:
+            # Stage 2: 8+ historical sessions
+            return ColdStartResult(
+                stage=2,
+                requires_ml=True,
+                candidate_difficulty=None,
+                decision_source=None,
+                rule_reason=(
+                    f"Stage 2: sufficient history ({context.historical_session_count} >= 8 sessions); "
+                    "requires ML baseline model inference."
+                ),
+            )

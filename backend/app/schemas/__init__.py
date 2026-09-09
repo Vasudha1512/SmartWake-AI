@@ -8,6 +8,14 @@ from backend.app.schemas.wake_session_schemas import (
     SnoozeEventResponse,
 )
 
+from backend.app.schemas.personalization_schemas import (
+    DecisionSource,
+    DifficultyLevel,
+    DifficultyPreference,
+    PersonalizationContext,
+    PersonalizationDecision,
+)
+
 __all__ = [
     "ChallengeResponse",
     "UserCreate",
@@ -19,6 +27,11 @@ __all__ = [
     "WakeSessionResponse",
     "SnoozeRequest",
     "SnoozeEventResponse",
+    "DecisionSource",
+    "DifficultyLevel",
+    "DifficultyPreference",
+    "PersonalizationContext",
+    "PersonalizationDecision",
 ]
 
 

@@ -62,6 +62,22 @@ from backend.app.services.wake_session_service import (
     start_challenge,
     transition_to_in_progress,
 )
+from backend.app.services.personalization_engine import (
+    ColdStartResult,
+    ColdStartRouter,
+    GuardrailResult,
+    SafetyGuardrails,
+)
+from backend.app.services.model_inference_manager import (
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    IncompatibleFeatureSchemaError,
+    ModelArtifactError,
+    ModelCorruptError,
+    ModelInferenceManager,
+    ModelInferenceResult,
+    ModelMetadataError,
+    ModelNotFoundError,
+)
 
 __all__ = [
     "list_active_challenges",
@@ -109,5 +125,17 @@ __all__ = [
     "resume_ringing",
     "SnoozeResult",
     "get_snooze_events_by_session",
+    "ColdStartRouter",
+    "SafetyGuardrails",
+    "ColdStartResult",
+    "GuardrailResult",
+    "ModelInferenceManager",
+    "ModelInferenceResult",
+    "DEFAULT_CONFIDENCE_THRESHOLD",
+    "IncompatibleFeatureSchemaError",
+    "ModelArtifactError",
+    "ModelNotFoundError",
+    "ModelCorruptError",
+    "ModelMetadataError",
 ]
 
