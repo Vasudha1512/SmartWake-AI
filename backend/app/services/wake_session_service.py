@@ -448,3 +448,81 @@ def get_snooze_events_by_session(db: Session, session_id: int) -> List[SnoozeEve
         ).all()
     )
 
+
+def resume_ringing(
+    db: Session,
+    session_id: int,
+    resumed_at: Optional[datetime] = None,
+) -> WakeSession:
+    """Transition a snoozed wake session back to 'ringing'.
+
+    Lifecycle Transition:
+    - Allowed: 'snoozed' -> 'ringing'
+    - Forbidden:
+      - 'ringing' -> 'ringing' (already ringing)
+      - 'in_challenge' -> 'ringing' (already in challenge)
+      - 'completed' -> 'ringing' (terminal)
+      - 'abandoned' -> 'ringing' (terminal)
+
+    Telemetry Effects:
+    - If this session has child SnoozeEvents and the latest SnoozeEvent has
+      ring_resumed_at is None, sets ring_resumed_at to the current timestamp
+      to represent the backend-recorded resume event.
+    - Sets session.status = STATUS_RINGING.
+
+    IMPORTANT ARCHITECTURAL RULE:
+    This is strictly a backend lifecycle/state transition. It does NOT implement
+    or imply an actual alarm re-ring timer, background scheduler, audio playback,
+    notification, or snooze duration waiting mechanism.
+
+    Args:
+        db: Active SQLAlchemy database session.
+        session_id: ID of the WakeSession.
+        resumed_at: Optional timestamp for ring_resumed_at (defaults to current time).
+
+    Returns:
+        Updated WakeSession with status='ringing'.
+
+    Raises:
+        WakeSessionNotFoundError: If session does not exist.
+        InvalidSessionTransitionError: If session is not in 'snoozed' state.
+    """
+    session = db.get(WakeSession, session_id)
+    if not session:
+        raise WakeSessionNotFoundError(f"Wake session with id {session_id} not found.")
+
+    if session.status in TERMINAL_STATUSES:
+        raise InvalidSessionTransitionError(
+            f"Cannot resume wake session {session_id} because it is in terminal status '{session.status}'."
+        )
+
+    if session.status == STATUS_RINGING:
+        raise InvalidSessionTransitionError(
+            f"Wake session {session_id} is already in ringing status."
+        )
+
+    if session.status != STATUS_SNOOZED:
+        raise InvalidSessionTransitionError(
+            f"Cannot resume wake session {session_id} from status '{session.status}'. "
+            f"Resume is only permitted from 'snoozed' status."
+        )
+
+    now = resumed_at if resumed_at is not None else datetime.utcnow()
+
+    # If child SnoozeEvents exist, record ring_resumed_at on the latest snooze event
+    if session.snooze_events:
+        latest_event = max(session.snooze_events, key=lambda e: e.snooze_number)
+        if latest_event.ring_resumed_at is None:
+            latest_event.ring_resumed_at = now
+
+    session.status = STATUS_RINGING
+
+    try:
+        db.commit()
+        db.refresh(session)
+        return session
+    except Exception:
+        db.rollback()
+        raise
+
+

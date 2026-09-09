@@ -45,6 +45,7 @@ from backend.app.services.wake_session_service import (
     get_wake_session_by_id,
     get_wake_sessions_by_user,
     record_snooze,
+    resume_ringing,
     start_challenge,
     transition_to_in_progress,
 )
@@ -88,6 +89,8 @@ __all__ = [
     "complete_wake_session",
     "fail_wake_session",
     "record_snooze",
+    "resume_ringing",
     "SnoozeResult",
     "get_snooze_events_by_session",
 ]
+
