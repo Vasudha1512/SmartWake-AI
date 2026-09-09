@@ -80,3 +80,34 @@ class RuntimeChallengeResponse(BaseModel):
     generated_at: datetime = Field(..., description="Timestamp of generation in UTC")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChallengeVerificationResult(BaseModel):
+    """Domain result schema representing the outcome of verifying a challenge submission."""
+
+    is_successful: bool = Field(..., description="Whether the challenge was successfully completed")
+    verification_score: float = Field(
+        ..., description="Normalized accuracy or completion score (0.0 to 1.0)"
+    )
+    verification_result: str = Field(
+        ..., description="Descriptive status summary (e.g. 'exact_match', 'failed', 'manual_confirmed')"
+    )
+    failure_reason: Optional[str] = Field(
+        None, description="Diagnostic failure reason if unsuccessful"
+    )
+    diagnostic_details: Dict[str, Any] = Field(
+        default_factory=dict, description="Diagnostic telemetry and verification details"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChallengeVerificationRequest(BaseModel):
+    """Request payload for validating a user's submission against a runtime challenge."""
+
+    runtime_challenge: Dict[str, Any] = Field(
+        ..., description="The RuntimeChallenge object or dictionary generated for this task"
+    )
+    submission_data: Dict[str, Any] = Field(
+        ..., description="User-submitted response data (answers, sequence, confirmed, etc.)"
+    )

@@ -20,6 +20,7 @@ from backend.app.services.challenge_seed_service import (
     SeedResult,
     seed_default_challenges,
 )
+from backend.app.services.challenge_verification_service import verify_challenge
 
 
 def validate_challenge_type(task_type: str) -> str:

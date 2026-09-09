@@ -14,12 +14,44 @@ from backend.app.core.exceptions import (
 from backend.app.database.session import get_db
 from backend.app.schemas.challenge_schemas import (
     ChallengeResponse,
+    ChallengeVerificationRequest,
+    ChallengeVerificationResult,
     RuntimeChallengeGenerationRequest,
     RuntimeChallengeResponse,
 )
 from backend.app.services import challenge_service
 
 router = APIRouter()
+
+
+@router.post(
+    "/verify",
+    response_model=ChallengeVerificationResult,
+    status_code=status.HTTP_200_OK,
+    summary="Verify Challenge Submission",
+)
+def verify_challenge_endpoint(
+    request: ChallengeVerificationRequest,
+):
+    """Verify a user submission against a RuntimeChallenge without database mutation.
+
+    Deterministically validates answers or patterns according to the challenge type.
+    """
+    try:
+        return challenge_service.verify_challenge(
+            runtime_challenge=request.runtime_challenge,
+            submission_data=request.submission_data,
+        )
+    except InvalidChallengeTypeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
