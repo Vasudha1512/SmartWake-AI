@@ -1,6 +1,7 @@
-"""Service layer for Scheduler Time and Recurrence evaluation in SmartWake AI.
+"""Service layer for Scheduler Time, Recurrence evaluation, and Execution in SmartWake AI.
 
 PHASE 2.6.2.1: Pure time and recurrence decision engine.
+PHASE 2.6.2.2: Scheduler execution and WakeSession creation engine.
 
 CORE PRODUCT RULES:
 1. The user controls the alarm time.
@@ -8,34 +9,76 @@ CORE PRODUCT RULES:
 3. The scheduler MUST NOT modify the alarm time.
 4. The scheduler MUST NOT choose or modify the challenge type.
 5. The scheduler MUST NOT perform ML/adaptive decisions.
-6. The scheduler only determines whether an active recurring alarm is due.
-7. This module does NOT create WakeSession records, spawn background tasks,
-   or modify alarm configurations.
+6. The scheduler only determines whether an active recurring alarm is due,
+   and creates initial 'ringing' WakeSessions where appropriate.
+7. This module does NOT run background loops (APScheduler, Celery, Redis),
+   send push notifications, or modify alarm configurations.
+
+SCHEDULER EXECUTION FLOW:
+current_time
+    ↓
+due-alarm detection (get_due_alarms)
+    ↓
+duplicate active-session & occurrence safety check (has_active_or_occurrence_session)
+    ↓
+WakeSession creation (wake_session_service.create_wake_session)
+    ↓
+initial status = "ringing"
 """
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 import os
 from typing import List, Optional, Tuple, Union
 import zoneinfo
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from backend.app.core.exceptions import (
+    ActiveSessionExistsError,
     InvalidAlarmTimeError,
     InvalidDaysOfWeekError,
     InvalidTimezoneError,
 )
 from backend.app.models.alarm import Alarm
 from backend.app.models.user import User
+from backend.app.models.wake_session import WakeSession
+from backend.app.services import wake_session_service
 from backend.app.services.alarm_service import (
     validate_alarm_time,
     validate_days_of_week,
 )
 from backend.app.services.user_service import _ensure_tzpath, validate_timezone
+from backend.app.services.wake_session_service import ACTIVE_STATUSES
 
 # Ensure zoneinfo search paths are configured on Windows
 _ensure_tzpath()
+
+
+@dataclass
+class SchedulerExecutionResult:
+    """Summary result of a scheduler execution run."""
+
+    processed: int = 0
+    created: int = 0
+    skipped: int = 0
+    sessions: List[WakeSession] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Convert result to a plain dictionary."""
+        return {
+            "processed": self.processed,
+            "created": self.created,
+            "skipped": self.skipped,
+            "sessions": self.sessions,
+        }
+
+    def __getitem__(self, key: str):
+        """Allow dict-like subscripting (e.g. result['created'])."""
+        if hasattr(self, key):
+            return getattr(self, key)
+        raise KeyError(key)
 
 
 def resolve_timezone(tz: Union[str, ZoneInfo]) -> ZoneInfo:
@@ -265,3 +308,175 @@ def get_due_alarms(
             due_alarms.append(alarm)
 
     return due_alarms
+
+
+def get_occurrence_scheduled_time(
+    alarm: Alarm,
+    current_time: datetime,
+    user_tz: Optional[Union[str, ZoneInfo]] = None,
+) -> datetime:
+    """Calculate the exact scheduled occurrence datetime (in UTC) for an alarm due at current_time.
+
+    Takes current local date and alarm's configured 'HH:MM' in the user's local timezone,
+    and converts it to a UTC datetime with second=0 and microsecond=0.
+
+    Args:
+        alarm: Alarm instance.
+        current_time: Timezone-aware current datetime.
+        user_tz: Optional user timezone string or ZoneInfo. If None, reads from alarm.user.timezone.
+
+    Returns:
+        Timezone-aware datetime in UTC representing the alarm's scheduled occurrence time.
+
+    Raises:
+        ValueError: If current_time is naive or user timezone cannot be determined.
+    """
+    if current_time.tzinfo is None:
+        raise ValueError("current_time must be timezone-aware.")
+
+    resolved_tz: Union[str, ZoneInfo]
+    if user_tz is not None:
+        resolved_tz = user_tz
+    elif getattr(alarm, "user", None) is not None and getattr(alarm.user, "timezone", None):
+        resolved_tz = alarm.user.timezone
+    else:
+        raise ValueError("User timezone must be provided via 'user_tz' or alarm.user.timezone.")
+
+    zone = resolve_timezone(resolved_tz)
+    local_dt = to_user_local_time(current_time, zone)
+    alarm_hour, alarm_minute = parse_alarm_time(alarm.time)
+
+    local_occurrence = local_dt.replace(
+        hour=alarm_hour,
+        minute=alarm_minute,
+        second=0,
+        microsecond=0,
+    )
+    return local_occurrence.astimezone(timezone.utc)
+
+
+def has_active_or_occurrence_session(
+    db: Session,
+    alarm_id: int,
+    occurrence_time_utc: datetime,
+) -> bool:
+    """Check whether an active session or a session for this occurrence already exists for this alarm.
+
+    Duplicate-Prevention & Occurrence-Safety Rules:
+    1. Active Session Guard: If ANY session for this alarm is in ACTIVE_STATUSES
+       ('ringing', 'in_challenge', 'snoozed'), returns True (skip).
+    2. Occurrence Window Guard: If a session for this alarm (even a terminal one such
+       as 'completed' or 'abandoned') already exists with scheduled_time within the
+       1-minute window [occurrence_time, occurrence_time + 60s), returns True (skip).
+       This prevents repeated scheduler runs in the same minute from creating multiple sessions
+       even if the user immediately completed or abandoned the initial session.
+
+    ASSUMPTIONS & LIMITATIONS:
+    SmartWake AI Phase 2.6.2.2 uses existing WakeSession state and scheduled_time timing
+    data rather than a dedicated occurrence_id column.
+
+    Args:
+        db: Active SQLAlchemy database session.
+        alarm_id: ID of the alarm.
+        occurrence_time_utc: Timezone-aware or naive UTC occurrence datetime.
+
+    Returns:
+        True if an active or occurrence-matching session exists, False otherwise.
+    """
+    # Normalize occurrence_time_utc to naive UTC for SQLite column comparison
+    naive_occurrence = (
+        occurrence_time_utc.astimezone(timezone.utc).replace(tzinfo=None)
+        if occurrence_time_utc.tzinfo is not None
+        else occurrence_time_utc
+    )
+    window_start = naive_occurrence
+    window_end = naive_occurrence + timedelta(minutes=1)
+
+    stmt = select(WakeSession).where(
+        WakeSession.alarm_id == alarm_id,
+        or_(
+            WakeSession.status.in_(ACTIVE_STATUSES),
+            and_(
+                WakeSession.scheduled_time >= window_start,
+                WakeSession.scheduled_time < window_end,
+            ),
+        ),
+    )
+    existing = db.scalars(stmt).first()
+    return existing is not None
+
+
+def process_due_alarms(
+    db: Session,
+    current_time: Optional[datetime] = None,
+) -> SchedulerExecutionResult:
+    """Execute the scheduler tick: find due alarms and create WakeSessions where appropriate.
+
+    Execution Flow:
+    current_time
+        ↓
+    due-alarm detection via get_due_alarms(db, current_time)
+        ↓
+    for each due alarm:
+        duplicate active-session & occurrence check
+        ↓
+        if no active or existing occurrence session:
+            create WakeSession with initial status = 'ringing'
+            (reuse wake_session_service.create_wake_session)
+        ↓
+        commit transaction safely
+
+    Args:
+        db: Active SQLAlchemy database session.
+        current_time: Optional timezone-aware datetime. If None, defaults to current UTC time.
+
+    Returns:
+        SchedulerExecutionResult detailing processed, created, and skipped counts,
+        plus the list of newly created WakeSession instances.
+
+    Raises:
+        ValueError: If current_time is a naive datetime.
+    """
+    if current_time is None:
+        current_time = datetime.now(timezone.utc)
+    elif current_time.tzinfo is None:
+        raise ValueError(
+            "Supplied current_time must be timezone-aware (tzinfo cannot be None). "
+            "Use e.g. datetime.now(timezone.utc) or attach a timezone."
+        )
+
+    # 1. Query all active alarms due at current_time
+    due_alarms = get_due_alarms(db, current_time=current_time)
+
+    result = SchedulerExecutionResult(processed=len(due_alarms))
+
+    for alarm in due_alarms:
+        try:
+            # 2. Compute exact scheduled occurrence time in UTC
+            occ_time_utc = get_occurrence_scheduled_time(alarm, current_time)
+            naive_occ = occ_time_utc.astimezone(timezone.utc).replace(tzinfo=None)
+
+            # 3. Check duplicate active session or occurrence session
+            if has_active_or_occurrence_session(db, alarm.id, occ_time_utc):
+                result.skipped += 1
+                continue
+
+            # 4. Create WakeSession using existing service layer
+            try:
+                session = wake_session_service.create_wake_session(
+                    db=db,
+                    user_id=alarm.user_id,
+                    alarm_id=alarm.id,
+                    scheduled_time=naive_occ,
+                )
+                result.created += 1
+                result.sessions.append(session)
+            except ActiveSessionExistsError:
+                # Concurrent active session guard
+                result.skipped += 1
+
+        except Exception:
+            db.rollback()
+            raise
+
+    return result
