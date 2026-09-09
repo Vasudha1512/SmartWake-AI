@@ -1,0 +1,175 @@
+{
+  "model_name": "baseline_difficulty_classifier",
+  "model_type": "LogisticRegression",
+  "random_state": 42,
+  "input_features_count": 30,
+  "input_features": [
+    "user_total_wake_sessions",
+    "user_successful_wake_sessions",
+    "user_failed_wake_sessions",
+    "user_historical_success_rate",
+    "user_avg_completion_time_seconds",
+    "user_avg_attempts_per_session",
+    "user_avg_snooze_count",
+    "user_total_snooze_count",
+    "user_recent_snooze_count",
+    "user_recent_challenge_success_rate",
+    "challenge_type_total_attempts",
+    "challenge_type_successful_attempts",
+    "challenge_type_success_rate",
+    "challenge_type_avg_completion_time",
+    "challenge_type_avg_attempts_per_session",
+    "challenge_type_easy_attempts",
+    "challenge_type_easy_success_rate",
+    "challenge_type_medium_attempts",
+    "challenge_type_medium_success_rate",
+    "challenge_type_hard_attempts",
+    "challenge_type_hard_success_rate",
+    "current_session_snooze_count",
+    "current_session_snooze_duration_minutes",
+    "current_session_wake_delay_seconds",
+    "alarm_scheduled_hour",
+    "alarm_scheduled_minute",
+    "alarm_day_of_week",
+    "alarm_is_weekend",
+    "historical_snooze_avg_around_alarm_time",
+    "selected_challenge_type"
+  ],
+  "numerical_features": [
+    "user_total_wake_sessions",
+    "user_successful_wake_sessions",
+    "user_failed_wake_sessions",
+    "user_historical_success_rate",
+    "user_avg_completion_time_seconds",
+    "user_avg_attempts_per_session",
+    "user_avg_snooze_count",
+    "user_total_snooze_count",
+    "user_recent_snooze_count",
+    "user_recent_challenge_success_rate",
+    "challenge_type_total_attempts",
+    "challenge_type_successful_attempts",
+    "challenge_type_success_rate",
+    "challenge_type_avg_completion_time",
+    "challenge_type_avg_attempts_per_session",
+    "challenge_type_easy_attempts",
+    "challenge_type_easy_success_rate",
+    "challenge_type_medium_attempts",
+    "challenge_type_medium_success_rate",
+    "challenge_type_hard_attempts",
+    "challenge_type_hard_success_rate",
+    "current_session_snooze_count",
+    "current_session_snooze_duration_minutes",
+    "current_session_wake_delay_seconds",
+    "alarm_scheduled_hour",
+    "alarm_scheduled_minute",
+    "alarm_day_of_week",
+    "alarm_is_weekend",
+    "historical_snooze_avg_around_alarm_time"
+  ],
+  "categorical_features": [
+    "selected_challenge_type"
+  ],
+  "target_classes": [
+    "easy",
+    "medium",
+    "hard"
+  ],
+  "split_sizes": {
+    "train": 210,
+    "val": 45,
+    "test": 45
+  },
+  "metrics": {
+    "train": {
+      "split": "train",
+      "sample_count": 210,
+      "accuracy": 0.7571,
+      "macro_precision": 0.738,
+      "macro_recall": 0.6065,
+      "macro_f1": 0.6323,
+      "confusion_matrix": {
+        "easy": {
+          "easy": 61,
+          "medium": 22,
+          "hard": 0
+        },
+        "medium": {
+          "easy": 13,
+          "medium": 94,
+          "hard": 2
+        },
+        "hard": {
+          "easy": 0,
+          "medium": 14,
+          "hard": 4
+        }
+      },
+      "class_distribution": {
+        "medium": 109,
+        "easy": 83,
+        "hard": 18
+      }
+    },
+    "val": {
+      "split": "val",
+      "sample_count": 45,
+      "accuracy": 0.6222,
+      "macro_precision": 0.5859,
+      "macro_recall": 0.5167,
+      "macro_f1": 0.5292,
+      "confusion_matrix": {
+        "easy": {
+          "easy": 14,
+          "medium": 6,
+          "hard": 0
+        },
+        "medium": {
+          "easy": 6,
+          "medium": 13,
+          "hard": 1
+        },
+        "hard": {
+          "easy": 1,
+          "medium": 3,
+          "hard": 1
+        }
+      },
+      "class_distribution": {
+        "medium": 20,
+        "easy": 20,
+        "hard": 5
+      }
+    },
+    "test": {
+      "split": "test",
+      "sample_count": 45,
+      "accuracy": 0.5111,
+      "macro_precision": 0.4716,
+      "macro_recall": 0.4603,
+      "macro_f1": 0.4334,
+      "confusion_matrix": {
+        "easy": {
+          "easy": 10,
+          "medium": 9,
+          "hard": 2
+        },
+        "medium": {
+          "easy": 2,
+          "medium": 12,
+          "hard": 7
+        },
+        "hard": {
+          "easy": 1,
+          "medium": 1,
+          "hard": 1
+        }
+      },
+      "class_distribution": {
+        "medium": 21,
+        "easy": 21,
+        "hard": 3
+      }
+    }
+  },
+  "model_artifact_path": "C:\\Users\\ADMIN\\OneDrive\\Documents\\Wakeup AI\\ml\\models\\baseline_difficulty_classifier.joblib"
+}
