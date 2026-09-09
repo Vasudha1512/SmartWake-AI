@@ -36,6 +36,19 @@ from backend.app.services.scheduler_service import (
     to_user_local_time,
 )
 
+from backend.app.services.wake_session_service import (
+    SnoozeResult,
+    complete_wake_session,
+    create_wake_session,
+    fail_wake_session,
+    get_snooze_events_by_session,
+    get_wake_session_by_id,
+    get_wake_sessions_by_user,
+    record_snooze,
+    start_challenge,
+    transition_to_in_progress,
+)
+
 __all__ = [
     "create_user",
     "get_user_by_id",
@@ -67,4 +80,14 @@ __all__ = [
     "process_due_alarms",
     "resolve_timezone",
     "to_user_local_time",
+    "create_wake_session",
+    "get_wake_session_by_id",
+    "get_wake_sessions_by_user",
+    "transition_to_in_progress",
+    "start_challenge",
+    "complete_wake_session",
+    "fail_wake_session",
+    "record_snooze",
+    "SnoozeResult",
+    "get_snooze_events_by_session",
 ]

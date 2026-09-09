@@ -42,3 +42,34 @@ class WakeSessionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SnoozeRequest(BaseModel):
+    """Request payload for snoozing an active wake session."""
+    user_id: Optional[int] = Field(None, description="Optional user ID for ownership validation")
+    alarm_id: Optional[int] = Field(None, description="Optional alarm ID for validation")
+    duration_minutes: Optional[int] = Field(5, description="Snooze duration in minutes (model default 5)")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_id": 1,
+                "alarm_id": 1,
+                "duration_minutes": 5,
+            }
+        }
+    )
+
+
+class SnoozeEventResponse(BaseModel):
+    """Response schema for a persisted SnoozeEvent telemetry record."""
+    id: int
+    wake_session_id: int
+    snooze_number: int
+    snoozed_at: datetime
+    ring_resumed_at: Optional[datetime] = None
+    snooze_duration_minutes: int = 5
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+

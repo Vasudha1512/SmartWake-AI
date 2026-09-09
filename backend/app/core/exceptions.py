@@ -71,4 +71,9 @@ class ActiveSessionExistsError(SmartWakeException):
     pass
 
 
+class InvalidSnoozeDurationError(SmartWakeException, ValueError):
+    """Raised when an invalid snooze duration (e.g. negative or zero) is specified."""
+    pass
+
+
 

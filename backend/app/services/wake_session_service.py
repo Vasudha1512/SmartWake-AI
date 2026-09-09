@@ -1,6 +1,6 @@
 """Service layer for WakeSession lifecycle operations, validation, and transitions."""
 from datetime import datetime
-from typing import List, Optional, Set
+from typing import List, NamedTuple, Optional, Set
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,10 +10,12 @@ from backend.app.core.exceptions import (
     AlarmOwnershipError,
     InactiveAlarmError,
     InvalidSessionTransitionError,
+    InvalidSnoozeDurationError,
     UserNotFoundError,
     WakeSessionNotFoundError,
 )
 from backend.app.models.alarm import Alarm
+from backend.app.models.snooze_event import SnoozeEvent
 from backend.app.models.user import User
 from backend.app.models.wake_session import WakeSession
 
@@ -296,3 +298,153 @@ def fail_wake_session(db: Session, session_id: int) -> WakeSession:
 # Semantic aliases for operational convenience
 start_challenge = transition_to_in_progress
 abandon_wake_session = fail_wake_session
+
+
+class SnoozeResult(NamedTuple):
+    """Result of a record_snooze action containing the updated WakeSession and created SnoozeEvent."""
+
+    wake_session: WakeSession
+    snooze_event: SnoozeEvent
+
+    def __getattr__(self, name: str):
+        """Delegate attribute access to the underlying WakeSession for convenience."""
+        return getattr(self.wake_session, name)
+
+
+def record_snooze(
+    db: Session,
+    session_id: int,
+    user_id: Optional[int] = None,
+    alarm_id: Optional[int] = None,
+    duration_minutes: Optional[int] = 5,
+    snoozed_at: Optional[datetime] = None,
+) -> SnoozeResult:
+    """Record a snooze event for an active WakeSession.
+
+    Validation Rules:
+    1. wake_session must exist (WakeSessionNotFoundError if not found).
+    2. If user_id is provided:
+       - user must exist (UserNotFoundError if not found).
+       - wake_session.user_id must match user_id (AlarmOwnershipError if mismatched).
+    3. If alarm_id is provided:
+       - alarm must exist (AlarmNotFoundError if not found).
+       - wake_session.alarm_id must match alarm_id (AlarmOwnershipError if mismatched).
+    4. wake_session must not be in terminal status ('completed', 'abandoned').
+       (InvalidSessionTransitionError if terminal).
+    5. wake_session must be in an allowed active state ('ringing', 'snoozed').
+       (InvalidSessionTransitionError if invalid).
+    6. duration_minutes must be a positive integer (> 0).
+       (InvalidSnoozeDurationError if <= 0).
+
+    Lifecycle Effects:
+    - Creates a new SnoozeEvent linked to wake_session.
+    - Sets snooze_number = wake_session.total_snooze_count + 1.
+    - Sets snoozed_at timestamp (defaults to current time).
+    - Leaves ring_resumed_at as None (actual scheduler re-ring behavior is in a future phase).
+    - Sets snooze_duration_minutes to the validated duration (defaults to model default 5).
+    - Increments wake_session.total_snooze_count += 1.
+    - Updates wake_session status: 'ringing' -> 'snoozed', or preserves 'snoozed' -> 'snoozed'.
+    - Commits transaction atomically; rolls back safely on failure.
+
+    Args:
+        db: Active SQLAlchemy database session.
+        session_id: ID of the WakeSession being snoozed.
+        user_id: Optional user ID for ownership validation.
+        alarm_id: Optional alarm ID for validation.
+        duration_minutes: Optional duration in minutes (defaults to model default 5).
+        snoozed_at: Optional datetime timestamp for snoozed_at (defaults to current time).
+
+    Returns:
+        SnoozeResult namedtuple containing (wake_session, snooze_event).
+
+    Raises:
+        WakeSessionNotFoundError: If wake session does not exist.
+        UserNotFoundError: If user_id is provided but user does not exist.
+        AlarmNotFoundError: If alarm_id is provided but alarm does not exist.
+        AlarmOwnershipError: If user_id or alarm_id does not match session ownership.
+        InvalidSessionTransitionError: If session is completed, abandoned, or in an invalid state.
+        InvalidSnoozeDurationError: If duration_minutes <= 0.
+    """
+    dur = 5 if duration_minutes is None else duration_minutes
+    if dur <= 0:
+        raise InvalidSnoozeDurationError(
+            f"Invalid snooze duration '{duration_minutes}'. Duration must be a positive integer (> 0)."
+        )
+
+    session = db.get(WakeSession, session_id)
+    if not session:
+        raise WakeSessionNotFoundError(f"Wake session with id {session_id} not found.")
+
+    if user_id is not None:
+        user = db.get(User, user_id)
+        if not user:
+            raise UserNotFoundError(f"User with id {user_id} not found.")
+        if session.user_id != user_id:
+            raise AlarmOwnershipError(
+                f"Wake session {session_id} belongs to user {session.user_id}, not user {user_id}."
+            )
+
+    if alarm_id is not None:
+        alarm = db.get(Alarm, alarm_id)
+        if not alarm:
+            raise AlarmNotFoundError(f"Alarm with id {alarm_id} not found.")
+        if session.alarm_id != alarm_id:
+            raise AlarmOwnershipError(
+                f"Wake session {session_id} belongs to alarm {session.alarm_id}, not alarm {alarm_id}."
+            )
+
+    if session.status in TERMINAL_STATUSES:
+        raise InvalidSessionTransitionError(
+            f"Cannot snooze wake session {session_id} because it is in terminal status '{session.status}'."
+        )
+
+    if session.status not in {STATUS_RINGING, STATUS_SNOOZED}:
+        raise InvalidSessionTransitionError(
+            f"Cannot snooze wake session {session_id} from status '{session.status}'. "
+            f"Snooze is only permitted while ringing or already snoozed."
+        )
+
+    now = snoozed_at if snoozed_at is not None else datetime.utcnow()
+    next_snooze_no = session.total_snooze_count + 1
+
+    snooze_event = SnoozeEvent(
+        wake_session_id=session.id,
+        snooze_number=next_snooze_no,
+        snoozed_at=now,
+        ring_resumed_at=None,
+        snooze_duration_minutes=dur,
+        created_at=now,
+    )
+
+    session.total_snooze_count = next_snooze_no
+    session.status = STATUS_SNOOZED
+
+    try:
+        db.add(snooze_event)
+        db.commit()
+        db.refresh(session)
+        db.refresh(snooze_event)
+        return SnoozeResult(wake_session=session, snooze_event=snooze_event)
+    except Exception:
+        db.rollback()
+        raise
+
+
+def get_snooze_events_by_session(db: Session, session_id: int) -> List[SnoozeEvent]:
+    """Retrieve all SnoozeEvents belonging to a specific WakeSession, ordered by snooze_number.
+
+    Args:
+        db: Active SQLAlchemy database session.
+        session_id: WakeSession ID.
+
+    Returns:
+        List of SnoozeEvent instances ordered by snooze_number ascending.
+    """
+    return list(
+        db.scalars(
+            select(SnoozeEvent)
+            .where(SnoozeEvent.wake_session_id == session_id)
+            .order_by(SnoozeEvent.snooze_number.asc())
+        ).all()
+    )
+
