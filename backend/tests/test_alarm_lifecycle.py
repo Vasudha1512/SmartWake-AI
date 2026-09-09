@@ -20,6 +20,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 import backend.app.database.session  # Ensures SQLite connection event listener is active
 from backend.app.database.session import get_db
@@ -307,7 +308,7 @@ class TestAlarmLifecycle(unittest.TestCase):
         alarm_id = create_resp.json()["id"]
 
         # Simulate a completed historical WakeSession linked to this alarm
-        now = datetime.utcnow()
+        now = now_utc_naive()
         with self.TestingSessionLocal() as session:
             wake_session = WakeSession(
                 user_id=self.user_id,

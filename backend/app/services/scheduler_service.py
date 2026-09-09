@@ -35,6 +35,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from backend.app.core.datetime_utils import ensure_naive_utc, now_utc
 from backend.app.core.exceptions import (
     ActiveSessionExistsError,
     InvalidAlarmTimeError,
@@ -123,11 +124,11 @@ def to_user_local_time(
     zone = resolve_timezone(user_tz)
 
     if dt is None:
-        dt = datetime.now(timezone.utc)
+        dt = now_utc()
     elif dt.tzinfo is None:
         raise ValueError(
             "Supplied datetime must be timezone-aware (tzinfo cannot be None). "
-            "Use e.g. datetime.now(timezone.utc) or attach a timezone."
+            "Use e.g. now_utc() or attach a timezone."
         )
 
     return dt.astimezone(zone)
@@ -384,11 +385,7 @@ def has_active_or_occurrence_session(
         True if an active or occurrence-matching session exists, False otherwise.
     """
     # Normalize occurrence_time_utc to naive UTC for SQLite column comparison
-    naive_occurrence = (
-        occurrence_time_utc.astimezone(timezone.utc).replace(tzinfo=None)
-        if occurrence_time_utc.tzinfo is not None
-        else occurrence_time_utc
-    )
+    naive_occurrence = ensure_naive_utc(occurrence_time_utc)
     window_start = naive_occurrence
     window_end = naive_occurrence + timedelta(minutes=1)
 
@@ -438,11 +435,11 @@ def process_due_alarms(
         ValueError: If current_time is a naive datetime.
     """
     if current_time is None:
-        current_time = datetime.now(timezone.utc)
+        current_time = now_utc()
     elif current_time.tzinfo is None:
         raise ValueError(
             "Supplied current_time must be timezone-aware (tzinfo cannot be None). "
-            "Use e.g. datetime.now(timezone.utc) or attach a timezone."
+            "Use e.g. now_utc() or attach a timezone."
         )
 
     # 1. Query all active alarms due at current_time
@@ -454,7 +451,7 @@ def process_due_alarms(
         try:
             # 2. Compute exact scheduled occurrence time in UTC
             occ_time_utc = get_occurrence_scheduled_time(alarm, current_time)
-            naive_occ = occ_time_utc.astimezone(timezone.utc).replace(tzinfo=None)
+            naive_occ = ensure_naive_utc(occ_time_utc)
 
             # 3. Check duplicate active session or occurrence session
             if has_active_or_occurrence_session(db, alarm.id, occ_time_utc):

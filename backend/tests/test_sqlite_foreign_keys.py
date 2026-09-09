@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 # Importing backend.app.database.session ensures the SQLite event listener is registered
 import backend.app.database.session
@@ -115,7 +116,7 @@ class TestSQLiteForeignKeyEnforcement(unittest.TestCase):
     def test_invalid_foreign_key_user_id_rejected_on_wake_session(self):
         """Verify inserting a WakeSession with non-existent user_id raises IntegrityError."""
         with self.TestingSessionLocal() as session:
-            now = datetime.utcnow()
+            now = now_utc_naive()
             bad_session = WakeSession(
                 user_id=88888,
                 scheduled_time=now,
@@ -198,7 +199,7 @@ class TestSQLiteForeignKeyEnforcement(unittest.TestCase):
             session.refresh(alarm)
             alarm_id = alarm.id
 
-            now = datetime.utcnow()
+            now = now_utc_naive()
             wake_session = WakeSession(
                 user_id=user.id,
                 alarm_id=alarm_id,

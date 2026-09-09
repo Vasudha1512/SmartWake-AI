@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -22,10 +23,10 @@ class SnoozeEvent(Base):
         Integer, ForeignKey("wake_sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     snooze_number: Mapped[int] = mapped_column(Integer, nullable=False)  # 1st, 2nd, 3rd snooze in session
-    snoozed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    snoozed_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
     ring_resumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     snooze_duration_minutes: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
 
     # Relationships
     wake_session: Mapped["WakeSession"] = relationship("WakeSession", back_populates="snooze_events")

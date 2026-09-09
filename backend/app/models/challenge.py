@@ -5,6 +5,7 @@ from typing import List
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -42,7 +43,7 @@ class Challenge(Base):
         Integer, default=10, nullable=False
     )  # Prevents sleepy bypass by enforcing minimum expected interaction time
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
 
     # Relationships
     attempts: Mapped[List["ChallengeAttempt"]] = relationship(

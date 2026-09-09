@@ -4,6 +4,11 @@ from typing import List, NamedTuple, Optional, Set
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.core.datetime_utils import (
+    diff_seconds,
+    ensure_naive_utc,
+    now_utc_naive,
+)
 from backend.app.core.exceptions import (
     ActiveSessionExistsError,
     AlarmNotFoundError,
@@ -103,8 +108,8 @@ def create_wake_session(
         )
 
     # 6. Instantiate new WakeSession
-    now = datetime.utcnow()
-    target_scheduled = scheduled_time if scheduled_time is not None else now
+    now = now_utc_naive()
+    target_scheduled = ensure_naive_utc(scheduled_time) if scheduled_time is not None else now
 
     wake_session = WakeSession(
         user_id=user_id,
@@ -236,12 +241,12 @@ def complete_wake_session(db: Session, session_id: int) -> WakeSession:
             f"'{session.status}'."
         )
 
-    now = datetime.utcnow()
+    now = now_utc_naive()
     session.status = STATUS_COMPLETED
     session.dismissed_time = now
     if session.scheduled_time:
         session.total_wake_delay_seconds = max(
-            0.0, (now - session.scheduled_time).total_seconds()
+            0.0, diff_seconds(now, session.scheduled_time)
         )
 
     db.commit()
@@ -282,12 +287,12 @@ def fail_wake_session(db: Session, session_id: int) -> WakeSession:
             f"'{session.status}'."
         )
 
-    now = datetime.utcnow()
+    now = now_utc_naive()
     session.status = STATUS_ABANDONED
     session.dismissed_time = now
     if session.scheduled_time:
         session.total_wake_delay_seconds = max(
-            0.0, (now - session.scheduled_time).total_seconds()
+            0.0, diff_seconds(now, session.scheduled_time)
         )
 
     db.commit()
@@ -404,7 +409,7 @@ def record_snooze(
             f"Snooze is only permitted while ringing or already snoozed."
         )
 
-    now = snoozed_at if snoozed_at is not None else datetime.utcnow()
+    now = ensure_naive_utc(snoozed_at) if snoozed_at is not None else now_utc_naive()
     next_snooze_no = session.total_snooze_count + 1
 
     snooze_event = SnoozeEvent(
@@ -507,7 +512,7 @@ def resume_ringing(
             f"Resume is only permitted from 'snoozed' status."
         )
 
-    now = resumed_at if resumed_at is not None else datetime.utcnow()
+    now = ensure_naive_utc(resumed_at) if resumed_at is not None else now_utc_naive()
 
     # If child SnoozeEvents exist, record ring_resumed_at on the latest snooze event
     if session.snooze_events:

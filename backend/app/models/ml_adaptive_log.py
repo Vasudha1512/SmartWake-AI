@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -36,7 +37,7 @@ class MLAdaptiveLog(Base):
         Integer, ForeignKey("wake_sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     decision_timestamp: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime, default=now_utc_naive, nullable=False
     )
     historical_features_snapshot: Mapped[str] = mapped_column(
         Text, nullable=False
@@ -59,7 +60,7 @@ class MLAdaptiveLog(Base):
     decision_rationale: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )  # Explainable rationale (e.g. "User selected tongue_twister; historical performance supports medium difficulty.")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
 
     # Relationships
     wake_session: Mapped["WakeSession"] = relationship("WakeSession", back_populates="ml_adaptive_logs")

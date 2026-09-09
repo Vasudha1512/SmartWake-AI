@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -20,9 +21,9 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     email: Mapped[Optional[str]] = mapped_column(String(120), unique=True, nullable=True)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False
     )
 
     # Relationships

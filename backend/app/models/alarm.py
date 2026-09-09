@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -40,9 +41,9 @@ class Alarm(Base):
         String(20), default="adaptive", nullable=False
     )  # "adaptive" (ML tunes difficulty), "easy", "medium", "hard"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False
     )
 
     # Relationships

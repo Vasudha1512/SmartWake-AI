@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -32,7 +33,7 @@ class ChallengeAttempt(Base):
     attempt_number: Mapped[int] = mapped_column(
         Integer, default=1, nullable=False
     )  # 1 for initial attempt, 2+ for retries
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_successful: Mapped[Optional[bool]] = mapped_column(
@@ -47,7 +48,7 @@ class ChallengeAttempt(Base):
     failure_reason: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True
     )  # Diagnostic (e.g. "pronunciation_mismatch", "wrong_answer", "timeout")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
 
     # Relationships
     wake_session: Mapped["WakeSession"] = relationship("WakeSession", back_populates="challenge_attempts")

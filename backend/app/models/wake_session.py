@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.app.core.datetime_utils import now_utc_naive
 from backend.app.database.base import Base
 
 
@@ -31,7 +32,7 @@ class WakeSession(Base):
     status: Mapped[str] = mapped_column(
         String(20), default="ringing", nullable=False
     )  # "ringing", "snoozed", "in_challenge", "completed", "abandoned"
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="wake_sessions")
