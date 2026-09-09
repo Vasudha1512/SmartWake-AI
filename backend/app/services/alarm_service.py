@@ -12,18 +12,9 @@ from backend.app.core.exceptions import (
     InvalidDifficultyError,
     UserNotFoundError,
 )
+from backend.app.core.constants import VALID_CHALLENGE_TYPES
 from backend.app.models.alarm import Alarm
 from backend.app.models.user import User
-
-# The five mandatory wake-up task types supported by SmartWake AI.
-# NOTE: 'memory' represents an actual pattern/sequence recall challenge, NOT number guessing.
-VALID_CHALLENGE_TYPES: Set[str] = {
-    "dance",
-    "math",
-    "memory",
-    "tongue_twister",
-    "push_ups",
-}
 
 # Supported baseline difficulty preferences
 VALID_DIFFICULTIES: Set[str] = {

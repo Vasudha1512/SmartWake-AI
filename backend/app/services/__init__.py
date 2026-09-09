@@ -36,7 +36,20 @@ from backend.app.services.scheduler_service import (
     to_user_local_time,
 )
 
+from backend.app.services.challenge_service import (
+    get_challenge_by_id,
+    get_challenge_by_type,
+    list_active_challenge_types,
+    list_active_challenges,
+)
 from backend.app.services.wake_session_service import (
+    ACTIVE_STATUSES,
+    STATUS_ABANDONED,
+    STATUS_COMPLETED,
+    STATUS_IN_CHALLENGE,
+    STATUS_RINGING,
+    STATUS_SNOOZED,
+    TERMINAL_STATUSES,
     SnoozeResult,
     complete_wake_session,
     create_wake_session,
@@ -51,6 +64,10 @@ from backend.app.services.wake_session_service import (
 )
 
 __all__ = [
+    "list_active_challenges",
+    "get_challenge_by_id",
+    "get_challenge_by_type",
+    "list_active_challenge_types",
     "create_user",
     "get_user_by_id",
     "get_user_by_username",

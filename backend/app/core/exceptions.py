@@ -21,6 +21,11 @@ class InvalidChallengeTypeError(SmartWakeException):
     pass
 
 
+class ChallengeNotFoundError(SmartWakeException):
+    """Raised when a requested challenge is not found in the catalog."""
+    pass
+
+
 class InvalidDifficultyError(SmartWakeException):
     """Raised when an invalid difficulty preference is specified."""
     pass
@@ -76,4 +81,16 @@ class InvalidSnoozeDurationError(SmartWakeException, ValueError):
     pass
 
 
+class InactiveChallengeError(SmartWakeException):
+    """Raised when attempting to generate a challenge from a deactivated template."""
+    pass
 
+
+class InvalidTemplatePayloadError(SmartWakeException):
+    """Raised when a challenge template payload cannot be parsed as JSON or violates JSON schema."""
+    pass
+
+
+class TemplateConfigurationError(SmartWakeException):
+    """Raised when required configuration keys for a specific challenge type are missing."""
+    pass
