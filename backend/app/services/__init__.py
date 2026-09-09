@@ -20,6 +20,17 @@ from backend.app.services.alarm_service import (
     validate_difficulty_preference,
     validate_days_of_week,
 )
+from backend.app.services.scheduler_service import (
+    get_alarm_days,
+    get_due_alarms,
+    is_alarm_active,
+    is_alarm_day,
+    is_alarm_due,
+    is_alarm_time_due,
+    parse_alarm_time,
+    resolve_timezone,
+    to_user_local_time,
+)
 
 __all__ = [
     "create_user",
@@ -39,4 +50,13 @@ __all__ = [
     "validate_days_of_week",
     "VALID_CHALLENGE_TYPES",
     "VALID_DIFFICULTIES",
+    "get_alarm_days",
+    "get_due_alarms",
+    "is_alarm_active",
+    "is_alarm_day",
+    "is_alarm_due",
+    "is_alarm_time_due",
+    "parse_alarm_time",
+    "resolve_timezone",
+    "to_user_local_time",
 ]
