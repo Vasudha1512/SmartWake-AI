@@ -111,3 +111,62 @@ class ChallengeVerificationRequest(BaseModel):
     submission_data: Dict[str, Any] = Field(
         ..., description="User-submitted response data (answers, sequence, confirmed, etc.)"
     )
+
+
+class ChallengeAttemptStartRequest(BaseModel):
+    """Request schema to start a challenge execution attempt for a wake session."""
+
+    user_id: int = Field(..., description="ID of the user attempting the challenge")
+    wake_session_id: int = Field(..., description="ID of the active WakeSession")
+    challenge_id: Optional[int] = Field(
+        None, description="Optional specific catalog template ID to attempt"
+    )
+    challenge_type: Optional[str] = Field(
+        None, description="Optional challenge category override or verification against session"
+    )
+    difficulty_level: Optional[str] = Field(
+        None, description="Optional difficulty tier override ('easy', 'medium', 'hard')"
+    )
+
+
+class ChallengeAttemptSubmitRequest(BaseModel):
+    """Request schema for submitting a user's answer or verification payload."""
+
+    user_id: int = Field(..., description="ID of the user submitting the attempt")
+    submission_data: Dict[str, Any] = Field(
+        ..., description="User-submitted response data (answers, sequence, confirmed, etc.)"
+    )
+
+
+class ChallengeAttemptResponse(BaseModel):
+    """Response schema representing a persisted ChallengeAttempt record."""
+
+    id: int = Field(..., description="Unique challenge attempt ID")
+    wake_session_id: int = Field(..., description="Associated WakeSession ID")
+    challenge_id: Optional[int] = Field(None, description="Associated catalog Challenge ID")
+    challenge_type: str = Field(..., description="Challenge category ('math', 'memory', etc.)")
+    difficulty_level: str = Field(..., description="Difficulty tier ('easy', 'medium', 'hard')")
+    prompt_content: str = Field(
+        ..., description="JSON string of runtime generated challenge specifications"
+    )
+    attempt_number: int = Field(
+        ..., description="Attempt sequence number for this session (1, 2, 3...)"
+    )
+    started_at: datetime = Field(..., description="Timestamp when attempt began in UTC")
+    completed_at: Optional[datetime] = Field(None, description="Timestamp when submitted in UTC")
+    duration_seconds: Optional[float] = Field(None, description="Completion duration in seconds")
+    is_successful: Optional[bool] = Field(
+        None, description="Outcome: True=passed, False=failed, None=in-progress"
+    )
+    verification_result: Optional[str] = Field(
+        None, description="Verification status summary / diagnostic JSON"
+    )
+    verification_score: Optional[float] = Field(
+        None, description="Normalized accuracy score (0.0 to 1.0)"
+    )
+    failure_reason: Optional[str] = Field(
+        None, description="Diagnostic failure reason if unsuccessful"
+    )
+    created_at: datetime = Field(..., description="Record creation timestamp in UTC")
+
+    model_config = ConfigDict(from_attributes=True)

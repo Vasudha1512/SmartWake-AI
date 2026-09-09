@@ -14,6 +14,12 @@ from sqlalchemy.orm import Session
 from backend.app.core.constants import FORBIDDEN_CHALLENGE_TYPES, VALID_CHALLENGE_TYPES
 from backend.app.core.exceptions import InvalidChallengeTypeError
 from backend.app.models.challenge import Challenge
+from backend.app.services.challenge_execution_service import (
+    get_challenge_attempt,
+    list_attempts_for_wake_session,
+    start_challenge_attempt,
+    submit_challenge_attempt,
+)
 from backend.app.services.challenge_generation_service import generate_challenge
 from backend.app.services.challenge_seed_service import (
     DEFAULT_CHALLENGE_CATALOG,

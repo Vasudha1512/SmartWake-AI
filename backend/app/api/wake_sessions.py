@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -7,6 +7,7 @@ from backend.app.core.exceptions import (
     ActiveSessionExistsError,
     AlarmNotFoundError,
     AlarmOwnershipError,
+    ChallengeAttemptOwnershipError,
     InactiveAlarmError,
     InvalidSessionTransitionError,
     InvalidSnoozeDurationError,
@@ -14,12 +15,13 @@ from backend.app.core.exceptions import (
     WakeSessionNotFoundError,
 )
 from backend.app.database.session import get_db
+from backend.app.schemas.challenge_schemas import ChallengeAttemptResponse
 from backend.app.schemas.wake_session_schemas import (
     SnoozeRequest,
     WakeSessionCreate,
     WakeSessionResponse,
 )
-from backend.app.services import wake_session_service
+from backend.app.services import challenge_service, wake_session_service
 
 router = APIRouter()
 
@@ -254,6 +256,34 @@ def resume_ringing_endpoint(
     except InvalidSessionTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(
+    "/{session_id}/challenge-attempts",
+    response_model=List[ChallengeAttemptResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get Challenge Attempts for Wake Session",
+)
+def get_session_challenge_attempts_endpoint(
+    session_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    """Retrieve all challenge execution attempts for a wake session in chronological order."""
+    try:
+        return challenge_service.list_attempts_for_wake_session(
+            db=db, session_id=session_id, user_id=user_id
+        )
+    except WakeSessionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ChallengeAttemptOwnershipError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
         ) from exc
 

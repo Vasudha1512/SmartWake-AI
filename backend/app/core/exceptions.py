@@ -94,3 +94,23 @@ class InvalidTemplatePayloadError(SmartWakeException):
 class TemplateConfigurationError(SmartWakeException):
     """Raised when required configuration keys for a specific challenge type are missing."""
     pass
+
+
+class ChallengeAttemptNotFoundError(SmartWakeException):
+    """Raised when a requested challenge attempt does not exist."""
+    pass
+
+
+class ChallengeAttemptOwnershipError(SmartWakeException):
+    """Raised when a user attempts to access or submit an attempt belonging to another user."""
+    pass
+
+
+class ActiveChallengeAttemptExistsError(SmartWakeException):
+    """Raised when an uncompleted attempt is already in progress for a wake session."""
+    pass
+
+
+class ChallengeAttemptCompletedError(SmartWakeException):
+    """Raised when attempting to submit an already completed challenge attempt."""
+    pass

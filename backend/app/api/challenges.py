@@ -4,15 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.exceptions import (
+    ActiveChallengeAttemptExistsError,
+    ChallengeAttemptCompletedError,
+    ChallengeAttemptNotFoundError,
+    ChallengeAttemptOwnershipError,
     ChallengeNotFoundError,
     InactiveChallengeError,
     InvalidChallengeTypeError,
     InvalidDifficultyError,
+    InvalidSessionTransitionError,
     InvalidTemplatePayloadError,
     TemplateConfigurationError,
+    WakeSessionNotFoundError,
 )
 from backend.app.database.session import get_db
 from backend.app.schemas.challenge_schemas import (
+    ChallengeAttemptResponse,
+    ChallengeAttemptStartRequest,
+    ChallengeAttemptSubmitRequest,
     ChallengeResponse,
     ChallengeVerificationRequest,
     ChallengeVerificationResult,
@@ -22,6 +31,115 @@ from backend.app.schemas.challenge_schemas import (
 from backend.app.services import challenge_service
 
 router = APIRouter()
+
+
+@router.post(
+    "/attempts/start",
+    response_model=ChallengeAttemptResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Start Challenge Attempt",
+)
+def start_challenge_attempt_endpoint(
+    request: ChallengeAttemptStartRequest,
+    db: Session = Depends(get_db),
+):
+    """Start and persist a new challenge execution attempt for an active WakeSession."""
+    try:
+        return challenge_service.start_challenge_attempt(db=db, request=request)
+    except WakeSessionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ChallengeAttemptOwnershipError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except ActiveChallengeAttemptExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except ChallengeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except (
+        InvalidSessionTransitionError,
+        InvalidChallengeTypeError,
+        InactiveChallengeError,
+        InvalidDifficultyError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/attempts/{attempt_id}/submit",
+    response_model=ChallengeAttemptResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Submit Challenge Attempt",
+)
+def submit_challenge_attempt_endpoint(
+    attempt_id: int,
+    request: ChallengeAttemptSubmitRequest,
+    db: Session = Depends(get_db),
+):
+    """Submit a challenge answer/result for verification and complete/retry tracking."""
+    try:
+        return challenge_service.submit_challenge_attempt(
+            db=db,
+            attempt_id=attempt_id,
+            user_id=request.user_id,
+            submission_data=request.submission_data,
+        )
+    except ChallengeAttemptNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ChallengeAttemptOwnershipError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except ChallengeAttemptCompletedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(
+    "/attempts/{attempt_id}",
+    response_model=ChallengeAttemptResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Challenge Attempt by ID",
+)
+def get_challenge_attempt_endpoint(
+    attempt_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    """Retrieve an individual ChallengeAttempt by ID with ownership verification."""
+    try:
+        return challenge_service.get_challenge_attempt(
+            db=db, attempt_id=attempt_id, user_id=user_id
+        )
+    except ChallengeAttemptNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ChallengeAttemptOwnershipError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
