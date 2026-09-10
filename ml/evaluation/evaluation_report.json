@@ -1,0 +1,822 @@
+{
+  "phase": "Phase 3.6.1 \u2014 Offline Model Evaluation & Metrics",
+  "model_artifact": "C:\\Users\\ADMIN\\OneDrive\\Documents\\Wakeup AI\\ml\\models\\baseline_difficulty_classifier.joblib",
+  "dataset_source": "C:\\Users\\ADMIN\\OneDrive\\Documents\\Wakeup AI\\ml\\data\\raw\\synthetic_challenge_features.csv",
+  "input_features_count": 30,
+  "input_features": [
+    "user_total_wake_sessions",
+    "user_successful_wake_sessions",
+    "user_failed_wake_sessions",
+    "user_historical_success_rate",
+    "user_avg_completion_time_seconds",
+    "user_avg_attempts_per_session",
+    "user_avg_snooze_count",
+    "user_total_snooze_count",
+    "user_recent_snooze_count",
+    "user_recent_challenge_success_rate",
+    "challenge_type_total_attempts",
+    "challenge_type_successful_attempts",
+    "challenge_type_success_rate",
+    "challenge_type_avg_completion_time",
+    "challenge_type_avg_attempts_per_session",
+    "challenge_type_easy_attempts",
+    "challenge_type_easy_success_rate",
+    "challenge_type_medium_attempts",
+    "challenge_type_medium_success_rate",
+    "challenge_type_hard_attempts",
+    "challenge_type_hard_success_rate",
+    "current_session_snooze_count",
+    "current_session_snooze_duration_minutes",
+    "current_session_wake_delay_seconds",
+    "alarm_scheduled_hour",
+    "alarm_scheduled_minute",
+    "alarm_day_of_week",
+    "alarm_is_weekend",
+    "historical_snooze_avg_around_alarm_time",
+    "selected_challenge_type"
+  ],
+  "target_semantics": {
+    "target_name": "optimal_difficulty",
+    "target_type": "heuristic-derived baseline target",
+    "description": "Deterministic benchmark derived from post-challenge execution outcomes (feasibility, duration, score, attempt sequence, snooze count). Intended solely as a developmental training and evaluation benchmark; does NOT represent objectively discovered clinical human ground truth.",
+    "target_classes": [
+      "easy",
+      "medium",
+      "hard"
+    ]
+  },
+  "split_sizes": {
+    "train": 210,
+    "val": 45,
+    "test": 45,
+    "total": 300
+  },
+  "evaluation_metrics": {
+    "train": {
+      "split": "train",
+      "sample_count": 210,
+      "overall_metrics": {
+        "accuracy": 0.7571,
+        "macro_precision": 0.738,
+        "macro_recall": 0.6065,
+        "macro_f1": 0.6323,
+        "weighted_f1": 0.744
+      },
+      "per_class_metrics": {
+        "easy": {
+          "precision": 0.8243,
+          "recall": 0.7349,
+          "f1_score": 0.7771,
+          "support": 83
+        },
+        "medium": {
+          "precision": 0.7231,
+          "recall": 0.8624,
+          "f1_score": 0.7866,
+          "support": 109
+        },
+        "hard": {
+          "precision": 0.6667,
+          "recall": 0.2222,
+          "f1_score": 0.3333,
+          "support": 18
+        }
+      },
+      "confusion_matrix_raw": {
+        "easy": {
+          "easy": 61,
+          "medium": 22,
+          "hard": 0
+        },
+        "medium": {
+          "easy": 13,
+          "medium": 94,
+          "hard": 2
+        },
+        "hard": {
+          "easy": 0,
+          "medium": 14,
+          "hard": 4
+        }
+      },
+      "confusion_matrix_normalized": {
+        "easy": {
+          "easy": 0.7349,
+          "medium": 0.2651,
+          "hard": 0.0
+        },
+        "medium": {
+          "easy": 0.1193,
+          "medium": 0.8624,
+          "hard": 0.0183
+        },
+        "hard": {
+          "easy": 0.0,
+          "medium": 0.7778,
+          "hard": 0.2222
+        }
+      },
+      "confidence_statistics": {
+        "mean_confidence": 0.7396,
+        "min_confidence": 0.4449,
+        "max_confidence": 0.9921,
+        "mean_confidence_correct": 0.7731,
+        "mean_confidence_incorrect": 0.6354,
+        "confidence_by_predicted_class": {
+          "easy": 0.8028,
+          "medium": 0.7108,
+          "hard": 0.5859
+        }
+      },
+      "target_class_distribution": {
+        "medium": 109,
+        "easy": 83,
+        "hard": 18
+      }
+    },
+    "val": {
+      "split": "val",
+      "sample_count": 45,
+      "overall_metrics": {
+        "accuracy": 0.6222,
+        "macro_precision": 0.5859,
+        "macro_recall": 0.5167,
+        "macro_f1": 0.5292,
+        "weighted_f1": 0.6104
+      },
+      "per_class_metrics": {
+        "easy": {
+          "precision": 0.6667,
+          "recall": 0.7,
+          "f1_score": 0.6829,
+          "support": 20
+        },
+        "medium": {
+          "precision": 0.5909,
+          "recall": 0.65,
+          "f1_score": 0.619,
+          "support": 20
+        },
+        "hard": {
+          "precision": 0.5,
+          "recall": 0.2,
+          "f1_score": 0.2857,
+          "support": 5
+        }
+      },
+      "confusion_matrix_raw": {
+        "easy": {
+          "easy": 14,
+          "medium": 6,
+          "hard": 0
+        },
+        "medium": {
+          "easy": 6,
+          "medium": 13,
+          "hard": 1
+        },
+        "hard": {
+          "easy": 1,
+          "medium": 3,
+          "hard": 1
+        }
+      },
+      "confusion_matrix_normalized": {
+        "easy": {
+          "easy": 0.7,
+          "medium": 0.3,
+          "hard": 0.0
+        },
+        "medium": {
+          "easy": 0.3,
+          "medium": 0.65,
+          "hard": 0.05
+        },
+        "hard": {
+          "easy": 0.2,
+          "medium": 0.6,
+          "hard": 0.2
+        }
+      },
+      "confidence_statistics": {
+        "mean_confidence": 0.7138,
+        "min_confidence": 0.4209,
+        "max_confidence": 0.9929,
+        "mean_confidence_correct": 0.7602,
+        "mean_confidence_incorrect": 0.6372,
+        "confidence_by_predicted_class": {
+          "easy": 0.7811,
+          "medium": 0.6663,
+          "hard": 0.5283
+        }
+      },
+      "target_class_distribution": {
+        "medium": 20,
+        "easy": 20,
+        "hard": 5
+      }
+    },
+    "test": {
+      "split": "test",
+      "sample_count": 45,
+      "overall_metrics": {
+        "accuracy": 0.5111,
+        "macro_precision": 0.4716,
+        "macro_recall": 0.4603,
+        "macro_f1": 0.4334,
+        "weighted_f1": 0.5452
+      },
+      "per_class_metrics": {
+        "easy": {
+          "precision": 0.7692,
+          "recall": 0.4762,
+          "f1_score": 0.5882,
+          "support": 21
+        },
+        "medium": {
+          "precision": 0.5455,
+          "recall": 0.5714,
+          "f1_score": 0.5581,
+          "support": 21
+        },
+        "hard": {
+          "precision": 0.1,
+          "recall": 0.3333,
+          "f1_score": 0.1538,
+          "support": 3
+        }
+      },
+      "confusion_matrix_raw": {
+        "easy": {
+          "easy": 10,
+          "medium": 9,
+          "hard": 2
+        },
+        "medium": {
+          "easy": 2,
+          "medium": 12,
+          "hard": 7
+        },
+        "hard": {
+          "easy": 1,
+          "medium": 1,
+          "hard": 1
+        }
+      },
+      "confusion_matrix_normalized": {
+        "easy": {
+          "easy": 0.4762,
+          "medium": 0.4286,
+          "hard": 0.0952
+        },
+        "medium": {
+          "easy": 0.0952,
+          "medium": 0.5714,
+          "hard": 0.3333
+        },
+        "hard": {
+          "easy": 0.3333,
+          "medium": 0.3333,
+          "hard": 0.3333
+        }
+      },
+      "confidence_statistics": {
+        "mean_confidence": 0.6954,
+        "min_confidence": 0.4334,
+        "max_confidence": 0.9867,
+        "mean_confidence_correct": 0.7662,
+        "mean_confidence_incorrect": 0.6214,
+        "confidence_by_predicted_class": {
+          "easy": 0.8356,
+          "medium": 0.6581,
+          "hard": 0.5951
+        }
+      },
+      "target_class_distribution": {
+        "medium": 21,
+        "easy": 21,
+        "hard": 3
+      }
+    }
+  },
+  "heuristic_comparison": {
+    "metadata": {
+      "evaluation_nature": "fair_prechallenge_comparison",
+      "target_type": "heuristic-derived baseline target",
+      "target_disclaimer": "Agreement with the heuristic-derived baseline target measures developmental alignment with designed objective criteria. It does NOT represent clinical or real-world human wake-up efficacy.",
+      "telemetry_constraint": "Strictly T_0 pre-challenge features; zero post-challenge leakage."
+    },
+    "splits": {
+      "train": {
+        "ml_baseline_model": {
+          "strategy_name": "ml_baseline_model",
+          "sample_count": 210,
+          "overall_metrics": {
+            "accuracy": 0.7571,
+            "macro_precision": 0.738,
+            "macro_recall": 0.6065,
+            "macro_f1": 0.6323,
+            "weighted_f1": 0.744
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.8243,
+              "recall": 0.7349,
+              "f1_score": 0.7771,
+              "support": 83
+            },
+            "medium": {
+              "precision": 0.7231,
+              "recall": 0.8624,
+              "f1_score": 0.7866,
+              "support": 109
+            },
+            "hard": {
+              "precision": 0.6667,
+              "recall": 0.2222,
+              "f1_score": 0.3333,
+              "support": 18
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 46,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 18,
+            "under_challenging_count": 0,
+            "under_challenging_rate": 0.0
+          }
+        },
+        "majority_class": {
+          "strategy_name": "majority_class",
+          "sample_count": 210,
+          "overall_metrics": {
+            "accuracy": 0.519,
+            "macro_precision": 0.173,
+            "macro_recall": 0.3333,
+            "macro_f1": 0.2278,
+            "weighted_f1": 0.3547
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 83
+            },
+            "medium": {
+              "precision": 0.519,
+              "recall": 1.0,
+              "f1_score": 0.6834,
+              "support": 109
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 18
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 46,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 18,
+            "under_challenging_count": 0,
+            "under_challenging_rate": 0.0
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.2381,
+            "macro_f1_delta_ml_minus_heuristic": 0.4045
+          }
+        },
+        "stage_0_task_demand": {
+          "strategy_name": "stage_0_task_demand",
+          "sample_count": 210,
+          "overall_metrics": {
+            "accuracy": 0.6571,
+            "macro_precision": 0.4375,
+            "macro_recall": 0.4814,
+            "macro_f1": 0.4581,
+            "weighted_f1": 0.6276
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.6458,
+              "recall": 0.747,
+              "f1_score": 0.6927,
+              "support": 83
+            },
+            "medium": {
+              "precision": 0.6667,
+              "recall": 0.6972,
+              "f1_score": 0.6816,
+              "support": 109
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 18
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 46,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 18,
+            "under_challenging_count": 1,
+            "under_challenging_rate": 0.0556
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.1,
+            "macro_f1_delta_ml_minus_heuristic": 0.1742
+          }
+        },
+        "stage_1_contextual": {
+          "strategy_name": "stage_1_contextual",
+          "sample_count": 210,
+          "overall_metrics": {
+            "accuracy": 0.4571,
+            "macro_precision": 0.4225,
+            "macro_recall": 0.3818,
+            "macro_f1": 0.3148,
+            "weighted_f1": 0.386
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.4368,
+              "recall": 0.9157,
+              "f1_score": 0.5914,
+              "support": 83
+            },
+            "medium": {
+              "precision": 0.7308,
+              "recall": 0.1743,
+              "f1_score": 0.2815,
+              "support": 109
+            },
+            "hard": {
+              "precision": 0.1,
+              "recall": 0.0556,
+              "f1_score": 0.0714,
+              "support": 18
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 46,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 18,
+            "under_challenging_count": 16,
+            "under_challenging_rate": 0.8889
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.3,
+            "macro_f1_delta_ml_minus_heuristic": 0.3175
+          }
+        }
+      },
+      "val": {
+        "ml_baseline_model": {
+          "strategy_name": "ml_baseline_model",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.6222,
+            "macro_precision": 0.5859,
+            "macro_recall": 0.5167,
+            "macro_f1": 0.5292,
+            "weighted_f1": 0.6104
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.6667,
+              "recall": 0.7,
+              "f1_score": 0.6829,
+              "support": 20
+            },
+            "medium": {
+              "precision": 0.5909,
+              "recall": 0.65,
+              "f1_score": 0.619,
+              "support": 20
+            },
+            "hard": {
+              "precision": 0.5,
+              "recall": 0.2,
+              "f1_score": 0.2857,
+              "support": 5
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 12,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 5,
+            "under_challenging_count": 1,
+            "under_challenging_rate": 0.2
+          }
+        },
+        "majority_class": {
+          "strategy_name": "majority_class",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.4444,
+            "macro_precision": 0.1481,
+            "macro_recall": 0.3333,
+            "macro_f1": 0.2051,
+            "weighted_f1": 0.2735
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 20
+            },
+            "medium": {
+              "precision": 0.4444,
+              "recall": 1.0,
+              "f1_score": 0.6154,
+              "support": 20
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 5
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 12,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 5,
+            "under_challenging_count": 0,
+            "under_challenging_rate": 0.0
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.1778,
+            "macro_f1_delta_ml_minus_heuristic": 0.3241
+          }
+        },
+        "stage_0_task_demand": {
+          "strategy_name": "stage_0_task_demand",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.6667,
+            "macro_precision": 0.444,
+            "macro_recall": 0.5,
+            "macro_f1": 0.4703,
+            "weighted_f1": 0.627
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.6957,
+              "recall": 0.8,
+              "f1_score": 0.7442,
+              "support": 20
+            },
+            "medium": {
+              "precision": 0.6364,
+              "recall": 0.7,
+              "f1_score": 0.6667,
+              "support": 20
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 5
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 12,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 5,
+            "under_challenging_count": 1,
+            "under_challenging_rate": 0.2
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": -0.0445,
+            "macro_f1_delta_ml_minus_heuristic": 0.0589
+          }
+        },
+        "stage_1_contextual": {
+          "strategy_name": "stage_1_contextual",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.4444,
+            "macro_precision": 0.1481,
+            "macro_recall": 0.3333,
+            "macro_f1": 0.2051,
+            "weighted_f1": 0.2735
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.4444,
+              "recall": 1.0,
+              "f1_score": 0.6154,
+              "support": 20
+            },
+            "medium": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 20
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 5
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 12,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 5,
+            "under_challenging_count": 5,
+            "under_challenging_rate": 1.0
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.1778,
+            "macro_f1_delta_ml_minus_heuristic": 0.3241
+          }
+        }
+      },
+      "test": {
+        "ml_baseline_model": {
+          "strategy_name": "ml_baseline_model",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.5111,
+            "macro_precision": 0.4716,
+            "macro_recall": 0.4603,
+            "macro_f1": 0.4334,
+            "weighted_f1": 0.5452
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.7692,
+              "recall": 0.4762,
+              "f1_score": 0.5882,
+              "support": 21
+            },
+            "medium": {
+              "precision": 0.5455,
+              "recall": 0.5714,
+              "f1_score": 0.5581,
+              "support": 21
+            },
+            "hard": {
+              "precision": 0.1,
+              "recall": 0.3333,
+              "f1_score": 0.1538,
+              "support": 3
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 8,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 3,
+            "under_challenging_count": 1,
+            "under_challenging_rate": 0.3333
+          }
+        },
+        "majority_class": {
+          "strategy_name": "majority_class",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.4667,
+            "macro_precision": 0.1556,
+            "macro_recall": 0.3333,
+            "macro_f1": 0.2121,
+            "weighted_f1": 0.297
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 21
+            },
+            "medium": {
+              "precision": 0.4667,
+              "recall": 1.0,
+              "f1_score": 0.6364,
+              "support": 21
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 3
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 8,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 3,
+            "under_challenging_count": 0,
+            "under_challenging_rate": 0.0
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.0444,
+            "macro_f1_delta_ml_minus_heuristic": 0.2213
+          }
+        },
+        "stage_0_task_demand": {
+          "strategy_name": "stage_0_task_demand",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.6222,
+            "macro_precision": 0.4198,
+            "macro_recall": 0.4444,
+            "macro_f1": 0.4274,
+            "weighted_f1": 0.5983
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.6667,
+              "recall": 0.5714,
+              "f1_score": 0.6154,
+              "support": 21
+            },
+            "medium": {
+              "precision": 0.5926,
+              "recall": 0.7619,
+              "f1_score": 0.6667,
+              "support": 21
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 3
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 8,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 3,
+            "under_challenging_count": 1,
+            "under_challenging_rate": 0.3333
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": -0.1111,
+            "macro_f1_delta_ml_minus_heuristic": 0.006
+          }
+        },
+        "stage_1_contextual": {
+          "strategy_name": "stage_1_contextual",
+          "sample_count": 45,
+          "overall_metrics": {
+            "accuracy": 0.4667,
+            "macro_precision": 0.1556,
+            "macro_recall": 0.3333,
+            "macro_f1": 0.2121,
+            "weighted_f1": 0.297
+          },
+          "per_class_metrics": {
+            "easy": {
+              "precision": 0.4667,
+              "recall": 1.0,
+              "f1_score": 0.6364,
+              "support": 21
+            },
+            "medium": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 21
+            },
+            "hard": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1_score": 0.0,
+              "support": 3
+            }
+          },
+          "operational_error_profile": {
+            "sluggish_sessions_count": 8,
+            "over_challenging_count": 0,
+            "over_challenging_rate": 0.0,
+            "alert_sessions_count": 3,
+            "under_challenging_count": 3,
+            "under_challenging_rate": 1.0
+          },
+          "comparative_delta_vs_ml": {
+            "accuracy_delta_ml_minus_heuristic": 0.0444,
+            "macro_f1_delta_ml_minus_heuristic": 0.2213
+          }
+        }
+      }
+    }
+  }
+}
