@@ -20,7 +20,7 @@ RESPONSIBILITIES:
 6. Zero post-challenge leakage (historical/pre-challenge information only).
 7. Zero runtime telemetry fabrication (no synthetic generators or fake metrics).
 """
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -40,7 +40,11 @@ from backend.app.schemas.personalization_schemas import (
     PersonalizationContext,
     PersonalizationDecision,
 )
-from backend.app.services.personalization_engine import PersonalizationEngine
+from backend.app.services.personalization_engine import (
+    ColdStartRouter,
+    PersonalizationEngine,
+    SafetyGuardrails,
+)
 from ml.preprocessing.feature_engineering import extract_features_for_session_context
 from ml.preprocessing.feature_schema import ChallengeFeatureRecord
 
@@ -176,13 +180,53 @@ class AdaptiveDecisionEngine:
             )
 
         # 4. Adaptive difficulty preference: invoke PersonalizationEngine
-        raw_decision: PersonalizationDecision = self.personalization_engine.decide(
-            context=ctx,
-            feature_record=feature_record,
-            recent_success_rate=recent_success_rate,
-            recent_avg_duration_seconds=recent_avg_duration_seconds,
-            has_recent_failure=has_recent_failure,
-        )
+        try:
+            raw_decision: PersonalizationDecision = self.personalization_engine.decide(
+                context=ctx,
+                feature_record=feature_record,
+                recent_success_rate=recent_success_rate,
+                recent_avg_duration_seconds=recent_avg_duration_seconds,
+                has_recent_failure=has_recent_failure,
+            )
+        except Exception as exc:
+            # Runtime boundary safety: delegate strictly to ColdStartRouter.evaluate_safe_fallback
+            eff_success_rate, eff_duration, eff_has_failure = PersonalizationEngine._resolve_stage_1_telemetry(
+                feature_record=feature_record,
+                recent_success_rate=recent_success_rate,
+                recent_avg_duration_seconds=recent_avg_duration_seconds,
+                has_recent_failure=has_recent_failure,
+            )
+            cand_diff, fb_reason = ColdStartRouter.evaluate_safe_fallback(
+                challenge_type=challenge_type,
+                baseline_difficulty=ctx.previous_difficulty,
+                recent_success_rate=eff_success_rate,
+                recent_avg_duration_seconds=eff_duration,
+                has_recent_failure=eff_has_failure,
+                current_session_snooze_count=ctx.current_session_snooze_count,
+                trigger_reason=f"runtime boundary caught unexpected exception ({type(exc).__name__}: {str(exc)})",
+            )
+            guard_res = SafetyGuardrails.apply_guardrails(
+                candidate_difficulty=cand_diff,
+                previous_difficulty=ctx.previous_difficulty,
+                current_session_snooze_count=ctx.current_session_snooze_count,
+            )
+            raw_decision = PersonalizationDecision(
+                recommended_difficulty=guard_res.final_difficulty,
+                challenge_type=challenge_type,
+                decision_source=(
+                    DecisionSource.GUARDRAIL_CLAMPED.value
+                    if guard_res.guardrail_applied
+                    else DecisionSource.FALLBACK_SAFE.value
+                ),
+                model_confidence=None,
+                raw_model_prediction=None,
+                guardrail_applied=guard_res.guardrail_applied,
+                guardrail_reason=guard_res.guardrail_reason,
+                feature_snapshot={
+                    "runtime_error_type": type(exc).__name__,
+                    "runtime_error_detail": str(exc),
+                },
+            )
 
         # 5. Rigorous boundary validation of PersonalizationEngine output
         # Invariant A: Challenge type must never be altered or replaced
@@ -250,10 +294,34 @@ class AdaptiveDecisionEngine:
                 f"due to: {raw_decision.guardrail_reason}."
             )
         elif decision_src == DecisionSource.FALLBACK_SAFE.value:
-            rationale = (
-                f"Safe fallback: resolved to '{final_diff}' due to low model confidence "
-                f"(< {MODEL_CONFIDENCE_THRESHOLD}) or missing historical telemetry."
-            )
+            err_type = None
+            err_detail = None
+            if raw_decision.feature_snapshot:
+                err_type = (
+                    raw_decision.feature_snapshot.get("ml_error_type")
+                    or raw_decision.feature_snapshot.get("infrastructure_error_type")
+                    or raw_decision.feature_snapshot.get("runtime_error_type")
+                )
+                err_detail = (
+                    raw_decision.feature_snapshot.get("ml_error_detail")
+                    or raw_decision.feature_snapshot.get("infrastructure_error_detail")
+                    or raw_decision.feature_snapshot.get("runtime_error_detail")
+                )
+            if err_type:
+                rationale = (
+                    f"Safe fallback: resolved to '{final_diff}' due to failure "
+                    f"({err_type}: {err_detail})."
+                )
+            elif raw_decision.model_confidence is not None:
+                rationale = (
+                    f"Safe fallback: resolved to '{final_diff}' due to low model confidence "
+                    f"({raw_decision.model_confidence:.2f} < {MODEL_CONFIDENCE_THRESHOLD})."
+                )
+            else:
+                rationale = (
+                    f"Safe fallback: resolved to '{final_diff}' due to low model confidence "
+                    f"(< {MODEL_CONFIDENCE_THRESHOLD}) or missing historical telemetry."
+                )
         else:
             rationale = f"Resolved to '{final_diff}' via {decision_src}."
 
@@ -303,7 +371,7 @@ class AdaptiveDecisionEngine:
         # 1. Resolve user-selected challenge type
         target_type: str
         if challenge_type:
-            target_type = str(challenge_type)
+            target_type = challenge_type
         elif wake_session.alarm_id:
             alarm = db.get(Alarm, wake_session.alarm_id)
             target_type = str(alarm.selected_challenge_type) if alarm else "math"
@@ -313,7 +381,7 @@ class AdaptiveDecisionEngine:
         # 2. Resolve difficulty preference
         target_pref: str
         if difficulty_preference:
-            target_pref = str(difficulty_preference)
+            target_pref = difficulty_preference
         elif wake_session.alarm_id:
             alarm = db.get(Alarm, wake_session.alarm_id)
             target_pref = (
@@ -331,87 +399,135 @@ class AdaptiveDecisionEngine:
             DifficultyLevel.HARD.value,
         ):
             ctx = PersonalizationContext(
-                user_id=int(wake_session.user_id),
-                wake_session_id=int(wake_session.id),
-                alarm_id=int(wake_session.alarm_id) if wake_session.alarm_id is not None else None,
+                user_id=cast(int, wake_session.user_id),
+                wake_session_id=cast(int, wake_session.id),
+                alarm_id=cast(Optional[int], wake_session.alarm_id) if wake_session.alarm_id is not None else None,
                 challenge_type=target_type,
                 difficulty_preference=clean_pref,
-                current_session_snooze_count=int(wake_session.total_snooze_count),
+                current_session_snooze_count=cast(int, wake_session.total_snooze_count),
                 historical_session_count=0,
                 previous_difficulty=None,
             )
             engine = cls(personalization_engine=personalization_engine)
             return engine.decide(context=ctx)
 
-        # 4. Adaptive preference: query point-in-time historical data
-        # Query prior completed/abandoned sessions strictly before this session's scheduled time
-        prior_sessions_query = (
-            select(WakeSession)
-            .where(
-                WakeSession.user_id == wake_session.user_id,
-                WakeSession.id != wake_session.id,
-                WakeSession.scheduled_time <= wake_session.scheduled_time,
-                WakeSession.status.in_(["completed", "abandoned"]),
-            )
-            .order_by(WakeSession.scheduled_time.desc(), WakeSession.id.desc())
-        )
-        prior_sessions = list(db.scalars(prior_sessions_query).all())
-        historical_session_count = len(prior_sessions)
-
-        # Resolve previous_difficulty:
-        # Check intra-session prior attempts first (retries)
+        # 4. Adaptive preference: query point-in-time historical data & extract features
         previous_difficulty: Optional[str] = None
-        if current_attempt_number > 1:
-            intra_prior_query = (
-                select(ChallengeAttempt)
-                .where(
-                    ChallengeAttempt.wake_session_id == wake_session.id,
-                    ChallengeAttempt.attempt_number < current_attempt_number,
-                )
-                .order_by(ChallengeAttempt.attempt_number.desc())
-            )
-            intra_prior = db.scalars(intra_prior_query).first()
-            if intra_prior and str(intra_prior.difficulty_level) in VALID_DIFFICULTY_LEVELS:
-                previous_difficulty = str(intra_prior.difficulty_level)
+        historical_session_count = 0
+        feature_record: Optional[ChallengeFeatureRecord] = None
 
-        # If not found in current session, check prior historical attempts
-        if not previous_difficulty and prior_sessions:
-            prior_session_ids = [s.id for s in prior_sessions]
-            prior_attempt_query = (
-                select(ChallengeAttempt)
+        try:
+            # Query prior completed/abandoned sessions strictly before this session's scheduled time
+            prior_sessions_query = (
+                select(WakeSession)
                 .where(
-                    ChallengeAttempt.wake_session_id.in_(prior_session_ids),
-                    ChallengeAttempt.completed_at.isnot(None),
-                    ChallengeAttempt.is_successful == True,  # noqa: E712
+                    WakeSession.user_id == wake_session.user_id,
+                    WakeSession.id != wake_session.id,
+                    WakeSession.scheduled_time <= wake_session.scheduled_time,
+                    WakeSession.status.in_(["completed", "abandoned"]),
                 )
-                .order_by(ChallengeAttempt.completed_at.desc())
+                .order_by(WakeSession.scheduled_time.desc(), WakeSession.id.desc())
             )
-            last_attempt = db.scalars(prior_attempt_query).first()
-            if last_attempt and str(last_attempt.difficulty_level) in VALID_DIFFICULTY_LEVELS:
-                previous_difficulty = str(last_attempt.difficulty_level)
+            prior_sessions = list(db.scalars(prior_sessions_query).all())
+            historical_session_count = len(prior_sessions)
+
+            # Resolve previous_difficulty:
+            # Check intra-session prior attempts first (retries)
+            if current_attempt_number > 1:
+                intra_prior_query = (
+                    select(ChallengeAttempt)
+                    .where(
+                        ChallengeAttempt.wake_session_id == wake_session.id,
+                        ChallengeAttempt.attempt_number < current_attempt_number,
+                    )
+                    .order_by(ChallengeAttempt.attempt_number.desc())
+                )
+                intra_prior = db.scalars(intra_prior_query).first()
+                if intra_prior and str(intra_prior.difficulty_level) in VALID_DIFFICULTY_LEVELS:
+                    previous_difficulty = str(intra_prior.difficulty_level)
+
+            # If not found in current session, check prior historical attempts
+            if not previous_difficulty and prior_sessions:
+                prior_session_ids = [s.id for s in prior_sessions]
+                prior_attempt_query = (
+                    select(ChallengeAttempt)
+                    .where(
+                        ChallengeAttempt.wake_session_id.in_(prior_session_ids),
+                        ChallengeAttempt.completed_at.isnot(None),
+                        ChallengeAttempt.is_successful == True,  # noqa: E712
+                    )
+                    .order_by(ChallengeAttempt.completed_at.desc())
+                )
+                last_attempt = db.scalars(prior_attempt_query).first()
+                if last_attempt and str(last_attempt.difficulty_level) in VALID_DIFFICULTY_LEVELS:
+                    previous_difficulty = str(last_attempt.difficulty_level)
+
+            # 5. Extract features if Stage 2 (8+ historical sessions)
+            if historical_session_count >= 8:
+                feature_record = extract_features_for_session_context(
+                    db=db,
+                    wake_session=wake_session,
+                    challenge_type=target_type,
+                    difficulty_preference="adaptive",
+                    current_attempt_number=current_attempt_number,
+                )
+
+        except Exception as exc:
+            # Infrastructure or extraction error: do NOT silently convert to generic unavailable telemetry
+            # Preserve diagnostic information, do NOT fabricate telemetry, do NOT treat as user failure
+            infra_type = type(exc).__name__
+            infra_detail = str(exc)
+            cand_diff, fb_reason = ColdStartRouter.evaluate_safe_fallback(
+                challenge_type=target_type,
+                baseline_difficulty=previous_difficulty,
+                recent_success_rate=None,
+                recent_avg_duration_seconds=None,
+                has_recent_failure=False,
+                current_session_snooze_count=cast(int, wake_session.total_snooze_count),
+                trigger_reason=f"infrastructure/db failure ({infra_type}: {infra_detail})",
+            )
+            guard_res = SafetyGuardrails.apply_guardrails(
+                candidate_difficulty=cand_diff,
+                previous_difficulty=previous_difficulty,
+                current_session_snooze_count=cast(int, wake_session.total_snooze_count),
+            )
+            final_src = (
+                DecisionSource.GUARDRAIL_CLAMPED.value
+                if guard_res.guardrail_applied
+                else DecisionSource.FALLBACK_SAFE.value
+            )
+            return AdaptiveChallengeDecision(
+                challenge_type=target_type,
+                final_difficulty=guard_res.final_difficulty,
+                decision_source=final_src,
+                model_confidence=None,
+                raw_model_prediction=None,
+                guardrail_applied=guard_res.guardrail_applied,
+                guardrail_reason=guard_res.guardrail_reason,
+                user_id=cast(int, wake_session.user_id),
+                wake_session_id=cast(int, wake_session.id),
+                alarm_id=cast(Optional[int], wake_session.alarm_id) if wake_session.alarm_id is not None else None,
+                decision_rationale=(
+                    f"Safe fallback: resolved to '{guard_res.final_difficulty}' due to "
+                    f"infrastructure/db error ({infra_type}: {infra_detail})."
+                ),
+                feature_snapshot={
+                    "infrastructure_error_type": infra_type,
+                    "infrastructure_error_detail": infra_detail,
+                },
+            )
 
         # Build PersonalizationContext
         ctx = PersonalizationContext(
-            user_id=int(wake_session.user_id),
-            wake_session_id=int(wake_session.id),
-            alarm_id=int(wake_session.alarm_id) if wake_session.alarm_id is not None else None,
+            user_id=cast(int, wake_session.user_id),
+            wake_session_id=cast(int, wake_session.id),
+            alarm_id=cast(Optional[int], wake_session.alarm_id) if wake_session.alarm_id is not None else None,
             challenge_type=target_type,
             difficulty_preference="adaptive",
-            current_session_snooze_count=int(wake_session.total_snooze_count),
+            current_session_snooze_count=cast(int, wake_session.total_snooze_count),
             historical_session_count=historical_session_count,
             previous_difficulty=previous_difficulty,
         )
-
-        # 5. Extract features if Stage 2 (8+ historical sessions)
-        feature_record: Optional[ChallengeFeatureRecord] = None
-        if historical_session_count >= 8:
-            feature_record = extract_features_for_session_context(
-                db=db,
-                wake_session=wake_session,
-                challenge_type=target_type,
-                difficulty_preference="adaptive",
-                current_attempt_number=current_attempt_number,
-            )
 
         engine = cls(personalization_engine=personalization_engine)
         return engine.decide(context=ctx, feature_record=feature_record)

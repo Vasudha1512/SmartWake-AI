@@ -342,6 +342,91 @@ class ColdStartRouter:
         return DifficultyLevel.MEDIUM.value, reason
 
     @classmethod
+    def evaluate_safe_fallback(
+        cls,
+        challenge_type: str,
+        baseline_difficulty: Optional[str] = None,
+        recent_success_rate: Optional[float] = None,
+        recent_avg_duration_seconds: Optional[float] = None,
+        has_recent_failure: bool = False,
+        current_session_snooze_count: int = 0,
+        trigger_reason: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """Authoritative deterministic fallback difficulty resolution (Phase 3.5).
+
+        Used by PersonalizationEngine and AdaptiveDecisionEngine when ML prediction
+        is unavailable, low confidence (< 0.60), or historical telemetry is incomplete.
+
+        Rules:
+        1. Contextual Telemetry Distinction:
+           - Complete telemetry: both success rate and average duration are provided.
+           - Partial telemetry: at least one metric is present (e.g. failure flag, or duration, or success rate).
+           - Unavailable telemetry: no historical metrics provided.
+        2. Policy Resolution:
+           - If contextual telemetry exists (complete or partial):
+             Evaluates Stage 1 contextual policy.
+             * Recent failure or avg duration > 40.0s -> 'easy'
+             * 100% success rate AND avg duration < 15.0s -> promotes baseline by +1 level
+               (Partial telemetry missing duration or success rate NEVER promotes; zero fabrication)
+             * Otherwise -> 'medium'
+           - If telemetry is unavailable:
+             Falls back to the safest existing deterministic baseline.
+             * If baseline_difficulty is provided and current_session_snooze_count < 2:
+               preserves baseline_difficulty if 'easy', else 'medium'.
+             * If baseline_difficulty is None or current_session_snooze_count >= 2:
+               evaluates Stage 0 heuristic (math/memory -> 'easy', snooze >= 2 -> 'easy',
+               physical -> 'medium').
+        3. Never fabricates missing metrics (no synthetic values).
+
+        Args:
+            challenge_type: Canonical challenge type.
+            baseline_difficulty: Optional prior difficulty baseline to evaluate against.
+            recent_success_rate: Optional rolling success rate (1.0 = 100%).
+            recent_avg_duration_seconds: Optional average completion speed in seconds.
+            has_recent_failure: True if recent attempt was failed/abandoned.
+            current_session_snooze_count: Count of snoozes in current session.
+            trigger_reason: Optional diagnostic trigger description.
+
+        Returns:
+            Tuple of (candidate_difficulty, rule_reason).
+        """
+        c_clean = challenge_type.strip().lower()
+        has_contextual_telemetry = (
+            has_recent_failure
+            or recent_avg_duration_seconds is not None
+            or recent_success_rate is not None
+        )
+
+        prefix = f"Safe fallback ({trigger_reason}): " if trigger_reason else "Safe fallback: "
+
+        if has_contextual_telemetry:
+            # Evaluate existing Stage 1 contextual policy
+            diff, stage_1_reason = cls.evaluate_stage_1(
+                baseline_difficulty=baseline_difficulty,
+                recent_success_rate=recent_success_rate,
+                recent_avg_duration_seconds=recent_avg_duration_seconds,
+                has_recent_failure=has_recent_failure,
+            )
+            return diff, f"{prefix}{stage_1_reason}"
+
+        # Telemetry is completely unavailable
+        if baseline_difficulty and current_session_snooze_count < 2:
+            base_clean = baseline_difficulty.strip().lower()
+            safe_diff = DifficultyLevel.EASY.value if base_clean == DifficultyLevel.EASY.value else DifficultyLevel.MEDIUM.value
+            reason = (
+                f"{prefix}telemetry unavailable; defaulted to safest baseline '{safe_diff}' "
+                f"from prior baseline '{baseline_difficulty}'."
+            )
+            return safe_diff, reason
+
+        # Baseline is None or snooze count >= 2: fall back to challenge-specific Stage 0 heuristic
+        s0_diff, s0_reason = cls.evaluate_stage_0(
+            challenge_type=c_clean,
+            current_session_snooze_count=current_session_snooze_count,
+        )
+        return s0_diff, f"{prefix}telemetry unavailable; applied Stage 0 baseline: {s0_reason}"
+
+    @classmethod
     def route(
         cls,
         context: PersonalizationContext,
@@ -563,48 +648,79 @@ class PersonalizationEngine:
 
         else:
             # Stage 2: 8+ sessions — ML inference
+            eff_success_rate, eff_duration, eff_has_failure = self._resolve_stage_1_telemetry(
+                feature_record=feature_record,
+                recent_success_rate=recent_success_rate,
+                recent_avg_duration_seconds=recent_avg_duration_seconds,
+                has_recent_failure=has_recent_failure,
+            )
+
             if feature_record is None:
-                # Telemetry missing: safely fall back to Stage 1 contextual heuristic without fabricating data
-                eff_success_rate, eff_duration, eff_has_failure = self._resolve_stage_1_telemetry(
-                    feature_record=None,
-                    recent_success_rate=recent_success_rate,
-                    recent_avg_duration_seconds=recent_avg_duration_seconds,
-                    has_recent_failure=has_recent_failure,
-                )
-                candidate_diff, fallback_reason = ColdStartRouter.evaluate_stage_1(
+                # Level 7: Incomplete/missing telemetry — safe deterministic fallback
+                candidate_diff, fallback_reason = ColdStartRouter.evaluate_safe_fallback(
+                    challenge_type=challenge_type,
                     baseline_difficulty=ctx.previous_difficulty,
                     recent_success_rate=eff_success_rate,
                     recent_avg_duration_seconds=eff_duration,
                     has_recent_failure=eff_has_failure,
+                    current_session_snooze_count=ctx.current_session_snooze_count,
+                    trigger_reason="missing feature record/telemetry",
                 )
                 candidate_source = DecisionSource.FALLBACK_SAFE
             else:
-                # Prepare clean feature input strictly using available features
-                features = self._prepare_ml_features(feature_record, ctx)
-                ml_res = self.model_manager.predict(features)
-                raw_model_prediction = ml_res.predicted_difficulty
-                model_confidence = ml_res.confidence
-                feature_snapshot = ml_res.feature_snapshot
+                try:
+                    # Prepare clean feature input strictly using available features
+                    features = self._prepare_ml_features(feature_record, ctx)
+                    ml_res = self.model_manager.predict(features)
 
-                # E. Confidence handling
-                if ml_res.meets_confidence_threshold:
-                    candidate_diff = ml_res.predicted_difficulty
-                    candidate_source = DecisionSource.ML_ADAPTIVE
-                else:
-                    # Low-confidence ML: safe fallback to Stage 1 contextual heuristic
-                    eff_success_rate, eff_duration, eff_has_failure = self._resolve_stage_1_telemetry(
-                        feature_record=feature_record,
-                        recent_success_rate=recent_success_rate,
-                        recent_avg_duration_seconds=recent_avg_duration_seconds,
-                        has_recent_failure=has_recent_failure,
-                    )
-                    candidate_diff, fallback_reason = ColdStartRouter.evaluate_stage_1(
+                    # Validate model output prediction
+                    if (
+                        not isinstance(ml_res.predicted_difficulty, str)
+                        or ml_res.predicted_difficulty.strip().lower() not in VALID_DIFFICULTY_LEVELS
+                    ):
+                        raise ValueError(
+                            f"Model returned invalid predicted difficulty: '{ml_res.predicted_difficulty}'"
+                        )
+
+                    raw_model_prediction = ml_res.predicted_difficulty.strip().lower()
+                    model_confidence = ml_res.confidence
+                    feature_snapshot = ml_res.feature_snapshot
+
+                    # Check confidence threshold (0.60)
+                    if ml_res.meets_confidence_threshold:
+                        # Level 4: ML Adaptive
+                        candidate_diff = raw_model_prediction
+                        candidate_source = DecisionSource.ML_ADAPTIVE
+                    else:
+                        # Level 5: Low-confidence fallback
+                        candidate_diff, fallback_reason = ColdStartRouter.evaluate_safe_fallback(
+                            challenge_type=challenge_type,
+                            baseline_difficulty=ctx.previous_difficulty,
+                            recent_success_rate=eff_success_rate,
+                            recent_avg_duration_seconds=eff_duration,
+                            has_recent_failure=eff_has_failure,
+                            current_session_snooze_count=ctx.current_session_snooze_count,
+                            trigger_reason=f"low model confidence ({ml_res.confidence:.2f} < {self.model_manager.confidence_threshold})",
+                        )
+                        candidate_source = DecisionSource.FALLBACK_SAFE
+
+                except Exception as exc:
+                    # Level 6: Model unavailable / inference exception fallback
+                    exc_type = type(exc).__name__
+                    candidate_diff, fallback_reason = ColdStartRouter.evaluate_safe_fallback(
+                        challenge_type=challenge_type,
                         baseline_difficulty=ctx.previous_difficulty,
                         recent_success_rate=eff_success_rate,
                         recent_avg_duration_seconds=eff_duration,
                         has_recent_failure=eff_has_failure,
+                        current_session_snooze_count=ctx.current_session_snooze_count,
+                        trigger_reason=f"model failure ({exc_type}: {str(exc)})",
                     )
                     candidate_source = DecisionSource.FALLBACK_SAFE
+                    feature_snapshot = {
+                        "ml_error_type": exc_type,
+                        "ml_error_detail": str(exc),
+                    }
 
         # F. Apply safety guardrails to adaptive candidate
         guardrail_res = SafetyGuardrails.apply_guardrails(

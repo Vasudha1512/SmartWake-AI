@@ -11,7 +11,7 @@ ARCHITECTURAL RULES:
 5. Atomic transaction safety across WakeSession state updates and attempt tracking.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -119,7 +119,7 @@ def start_challenge_attempt(
     if existing_attempts:
         # Retries MUST preserve the exact same challenge type selected for this session
         required_type = str(existing_attempts[0].challenge_type)
-        if request.challenge_type and str(request.challenge_type).lower() != required_type.lower():
+        if request.challenge_type and request.challenge_type.lower() != required_type.lower():
             raise InvalidChallengeTypeError(
                 f"Cannot switch challenge type during retries. "
                 f"Active session challenge type is '{required_type}'."
@@ -128,7 +128,7 @@ def start_challenge_attempt(
     else:
         # First attempt: resolve from request, alarm, or fallback default
         if request.challenge_type:
-            target_type = str(request.challenge_type)
+            target_type = request.challenge_type
         elif session.alarm_id:
             alarm = db.get(Alarm, session.alarm_id)
             target_type = str(alarm.selected_challenge_type) if alarm else "math"
@@ -158,7 +158,7 @@ def start_challenge_attempt(
         # Resolve difficulty via AdaptiveDecisionEngine (Phase 3.4)
         pref_to_use: str
         if request.difficulty_level:
-            pref_to_use = str(request.difficulty_level)
+            pref_to_use = request.difficulty_level
         elif session.alarm_id:
             alarm = db.get(Alarm, session.alarm_id)
             pref_to_use = str(alarm.difficulty_preference) if alarm else "adaptive"
@@ -294,7 +294,7 @@ def submit_challenge_attempt(
 
     # 7. Update WakeSession lifecycle
     if verification.is_successful:
-        complete_wake_session(db=db, session_id=int(session.id))
+        complete_wake_session(db=db, session_id=cast(int, session.id))
     else:
         # Failed attempts leave session in_challenge ready for retry
         session.status = STATUS_IN_CHALLENGE
