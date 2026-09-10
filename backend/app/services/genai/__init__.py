@@ -60,6 +60,14 @@ __all__ = [
     "MemoryAnswerValidator",
     "MemoryPromptBuilder",
     "MemoryChallengeGenerator",
+    # Phase 4.4 Tongue Twister Challenge Exports
+    "TongueTwisterChallengePayload",
+    "TongueTwisterGenerationConstraints",
+    "get_tongue_twister_difficulty_constraints",
+    "build_tongue_twister_generation_constraints",
+    "TongueTwisterAnswerValidator",
+    "TongueTwisterPromptBuilder",
+    "TongueTwisterChallengeGenerator",
 ]
 
 # Phase 4.2 Schema and Service Imports
@@ -89,6 +97,17 @@ from backend.app.services.genai.memory_generation_constraints import (
     get_memory_difficulty_constraints,
 )
 from backend.app.services.genai.memory_prompt_builder import MemoryPromptBuilder
+
+# Phase 4.4 Schema and Service Imports
+from backend.app.schemas.tongue_twister_challenge_schemas import TongueTwisterChallengePayload
+from backend.app.services.genai.tongue_twister_answer_validator import TongueTwisterAnswerValidator
+from backend.app.services.genai.tongue_twister_challenge_generator import TongueTwisterChallengeGenerator
+from backend.app.services.genai.tongue_twister_generation_constraints import (
+    TongueTwisterGenerationConstraints,
+    build_tongue_twister_generation_constraints,
+    get_tongue_twister_difficulty_constraints,
+)
+from backend.app.services.genai.tongue_twister_prompt_builder import TongueTwisterPromptBuilder
 
 
 

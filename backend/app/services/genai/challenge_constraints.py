@@ -104,12 +104,15 @@ from backend.app.services.genai.math_generation_constraints import (
 from backend.app.services.genai.memory_generation_constraints import (
     build_memory_generation_constraints,
 )
+from backend.app.services.genai.tongue_twister_generation_constraints import (
+    build_tongue_twister_generation_constraints,
+)
 
 # Seed initial baseline constraint slots for canonical types
 _CONSTRAINT_REGISTRY = {
     "math": build_math_generation_constraints,
     "memory": build_memory_generation_constraints,
-    "tongue_twister": _build_default_tongue_twister_constraints,
+    "tongue_twister": build_tongue_twister_generation_constraints,
     "dance": _build_default_dance_constraints,
     "push_ups": _build_default_push_ups_constraints,
 }

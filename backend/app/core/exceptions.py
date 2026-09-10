@@ -188,5 +188,18 @@ class MemoryChallengeGenerationError(GenAIError):
     pass
 
 
+# =============================================================================
+# Tongue Twister GenAI Challenge Exceptions (Phase 4.4)
+# =============================================================================
+class TongueTwisterEvaluationError(ChallengeContentValidationError):
+    """Raised when generated tongue twister content fails text validation, bounds, sound-pattern heuristic, or consistency checks."""
+    pass
+
+
+class TongueTwisterChallengeGenerationError(GenAIError):
+    """Raised when tongue twister challenge generation pipeline encounters a coordination or configuration failure."""
+    pass
+
+
 
 
