@@ -175,4 +175,18 @@ class MathChallengeGenerationError(GenAIError):
     pass
 
 
+# =============================================================================
+# Memory GenAI Challenge Exceptions (Phase 4.3)
+# =============================================================================
+class MemoryEvaluationError(ChallengeContentValidationError):
+    """Raised when generated memory content fails non-numeric validation, coordinate bounds, path continuity, or consistency checks."""
+    pass
+
+
+class MemoryChallengeGenerationError(GenAIError):
+    """Raised when memory challenge generation pipeline encounters a coordination or configuration failure."""
+    pass
+
+
+
 

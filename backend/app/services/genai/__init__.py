@@ -52,6 +52,14 @@ __all__ = [
     "MathAnswerValidator",
     "MathPromptBuilder",
     "MathChallengeGenerator",
+    # Phase 4.3 Memory Challenge Exports
+    "MemoryChallengePayload",
+    "MemoryGenerationConstraints",
+    "get_memory_difficulty_constraints",
+    "build_memory_generation_constraints",
+    "MemoryAnswerValidator",
+    "MemoryPromptBuilder",
+    "MemoryChallengeGenerator",
 ]
 
 # Phase 4.2 Schema and Service Imports
@@ -70,5 +78,17 @@ from backend.app.services.genai.math_generation_constraints import (
     get_math_difficulty_constraints,
 )
 from backend.app.services.genai.math_prompt_builder import MathPromptBuilder
+
+# Phase 4.3 Schema and Service Imports
+from backend.app.schemas.memory_challenge_schemas import MemoryChallengePayload
+from backend.app.services.genai.memory_answer_validator import MemoryAnswerValidator
+from backend.app.services.genai.memory_challenge_generator import MemoryChallengeGenerator
+from backend.app.services.genai.memory_generation_constraints import (
+    MemoryGenerationConstraints,
+    build_memory_generation_constraints,
+    get_memory_difficulty_constraints,
+)
+from backend.app.services.genai.memory_prompt_builder import MemoryPromptBuilder
+
 
 
