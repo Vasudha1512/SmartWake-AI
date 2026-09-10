@@ -79,6 +79,9 @@ from backend.app.services.model_inference_manager import (
     ModelMetadataError,
     ModelNotFoundError,
 )
+from backend.app.services.adaptive_decision_engine import (
+    AdaptiveDecisionEngine,
+)
 
 __all__ = [
     "list_active_challenges",
@@ -139,5 +142,6 @@ __all__ = [
     "ModelNotFoundError",
     "ModelCorruptError",
     "ModelMetadataError",
+    "AdaptiveDecisionEngine",
 ]
 

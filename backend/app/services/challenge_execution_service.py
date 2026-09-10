@@ -35,6 +35,7 @@ from backend.app.schemas.challenge_schemas import (
     ChallengeAttemptStartRequest,
     RuntimeChallengeGenerationRequest,
 )
+from backend.app.services.adaptive_decision_engine import AdaptiveDecisionEngine
 from backend.app.services.challenge_generation_service import generate_challenge
 from backend.app.services.challenge_verification_service import verify_challenge
 from backend.app.services.wake_session_service import (
@@ -48,13 +49,16 @@ from backend.app.services.wake_session_service import (
 
 
 def start_challenge_attempt(
-    db: Session, request: ChallengeAttemptStartRequest
+    db: Session,
+    request: ChallengeAttemptStartRequest,
+    decision_engine: Optional[AdaptiveDecisionEngine] = None,
 ) -> ChallengeAttempt:
     """Start and persist a new challenge execution attempt for an active WakeSession.
 
     Args:
         db: Active SQLAlchemy database session.
         request: ChallengeAttemptStartRequest parameters.
+        decision_engine: Optional AdaptiveDecisionEngine instance (for testing/injection).
 
     Returns:
         ChallengeAttempt: The newly created and persisted attempt record.
@@ -106,40 +110,30 @@ def start_challenge_attempt(
         .order_by(ChallengeAttempt.attempt_number.asc())
     )
     existing_attempts = list(db.scalars(history_stmt).all())
+    attempt_number = len(existing_attempts) + 1
 
     # Resolve challenge type & difficulty
     target_type: str
-    target_diff: Optional[str] = request.difficulty_level
+    target_diff: Optional[str] = None
 
     if existing_attempts:
         # Retries MUST preserve the exact same challenge type selected for this session
-        required_type = existing_attempts[0].challenge_type
-        if request.challenge_type and request.challenge_type.lower() != required_type.lower():
+        required_type = str(existing_attempts[0].challenge_type)
+        if request.challenge_type and str(request.challenge_type).lower() != required_type.lower():
             raise InvalidChallengeTypeError(
                 f"Cannot switch challenge type during retries. "
                 f"Active session challenge type is '{required_type}'."
             )
         target_type = required_type
-        if not target_diff:
-            target_diff = existing_attempts[0].difficulty_level
     else:
         # First attempt: resolve from request, alarm, or fallback default
         if request.challenge_type:
-            target_type = request.challenge_type
+            target_type = str(request.challenge_type)
         elif session.alarm_id:
             alarm = db.get(Alarm, session.alarm_id)
-            target_type = alarm.selected_challenge_type if alarm else "math"
-            if not target_diff and alarm:
-                target_diff = (
-                    alarm.difficulty_preference
-                    if alarm.difficulty_preference != "adaptive"
-                    else "medium"
-                )
+            target_type = str(alarm.selected_challenge_type) if alarm else "math"
         else:
             target_type = "math"
-
-    if not target_diff:
-        target_diff = "medium"
 
     # Resolve template ID if specified
     template_id_to_use = request.challenge_id
@@ -153,13 +147,34 @@ def start_challenge_attempt(
             raise InactiveChallengeError(
                 f"Cannot execute inactive challenge template id {template.id} ('{template.title}')."
             )
-        if existing_attempts and template.challenge_type.lower() != required_type.lower():
+        if existing_attempts and str(template.challenge_type).lower() != str(existing_attempts[0].challenge_type).lower():
             raise InvalidChallengeTypeError(
                 f"Template type '{template.challenge_type}' does not match session "
-                f"challenge type '{required_type}'."
+                f"challenge type '{existing_attempts[0].challenge_type}'."
             )
-        target_type = template.challenge_type
-        target_diff = template.difficulty_level
+        target_type = str(template.challenge_type)
+        target_diff = str(template.difficulty_level)
+    else:
+        # Resolve difficulty via AdaptiveDecisionEngine (Phase 3.4)
+        pref_to_use: str
+        if request.difficulty_level:
+            pref_to_use = str(request.difficulty_level)
+        elif session.alarm_id:
+            alarm = db.get(Alarm, session.alarm_id)
+            pref_to_use = str(alarm.difficulty_preference) if alarm else "adaptive"
+        else:
+            pref_to_use = "adaptive"
+
+        engine = decision_engine or AdaptiveDecisionEngine()
+        decision = engine.decide_for_session(
+            db=db,
+            wake_session=session,
+            challenge_type=target_type,
+            difficulty_preference=pref_to_use,
+            current_attempt_number=attempt_number,
+        )
+        target_type = decision.challenge_type
+        target_diff = decision.final_difficulty
 
     # 4. Generate in-memory RuntimeChallenge instance
     gen_req = RuntimeChallengeGenerationRequest(
@@ -168,9 +183,6 @@ def start_challenge_attempt(
         difficulty_level=target_diff if template_id_to_use is None else None,
     )
     runtime_res = generate_challenge(db, gen_req)
-
-    # 5. Determine sequential attempt number
-    attempt_number = len(existing_attempts) + 1
 
     # 6. Serialize runtime challenge into prompt_content
     prompt_payload = {
@@ -261,8 +273,8 @@ def submit_challenge_attempt(
     # 4. Record completion time and compute non-negative duration
     now = now_utc_naive()
     duration_seconds = max(0.0, diff_seconds(now, attempt.started_at))
-    attempt.completed_at = now
-    attempt.duration_seconds = duration_seconds
+    setattr(attempt, "completed_at", now)
+    setattr(attempt, "duration_seconds", duration_seconds)
 
     # 5. Deserialize runtime challenge specifications and verify via Phase 2.8
     runtime_dict = json.loads(attempt.prompt_content)
@@ -272,17 +284,17 @@ def submit_challenge_attempt(
     )
 
     # 6. Persist verification outcomes
-    attempt.is_successful = verification.is_successful
-    attempt.verification_score = verification.verification_score
-    attempt.failure_reason = verification.failure_reason
-    attempt.verification_result = json.dumps({
+    setattr(attempt, "is_successful", verification.is_successful)
+    setattr(attempt, "verification_score", verification.verification_score)
+    setattr(attempt, "failure_reason", verification.failure_reason)
+    setattr(attempt, "verification_result", json.dumps({
         "status": verification.verification_result,
         "diagnostics": verification.diagnostic_details,
-    })
+    }))
 
     # 7. Update WakeSession lifecycle
     if verification.is_successful:
-        complete_wake_session(db=db, session_id=session.id)
+        complete_wake_session(db=db, session_id=int(session.id))
     else:
         # Failed attempts leave session in_challenge ready for retry
         session.status = STATUS_IN_CHALLENGE

@@ -249,3 +249,138 @@ class PersonalizationDecision(BaseModel):
             }
         },
     )
+
+
+class AdaptiveChallengeDecision(BaseModel):
+    """Authoritative challenge decision produced by AdaptiveDecisionEngine (Phase 3.4).
+
+    Acts as the final runtime contract consumed by runtime challenge generation.
+    Captures the concrete final difficulty, preserved challenge type, decision
+    source audit trail, session context for traceability, and rationale.
+    """
+
+    challenge_type: str = Field(
+        ..., description="Immutable user-selected challenge category"
+    )
+    final_difficulty: str = Field(
+        ..., description="Authoritative challenge difficulty level ('easy', 'medium', 'hard')"
+    )
+    decision_source: str = Field(
+        ...,
+        description=(
+            "Source policy of the decision ('user_fixed', 'cold_start_stage_0', "
+            "'cold_start_stage_1', 'ml_adaptive', 'guardrail_clamped', 'fallback_safe')"
+        ),
+    )
+    model_confidence: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Top class probability if ML inference was executed",
+    )
+    raw_model_prediction: Optional[str] = Field(
+        None, description="Pre-guardrail model prediction if ML inference was executed"
+    )
+    guardrail_applied: bool = Field(
+        default=False, description="True if safety guardrails adjusted the candidate difficulty"
+    )
+    guardrail_reason: Optional[str] = Field(
+        None, description="Diagnostic explanation if guardrails were applied"
+    )
+    user_id: Optional[int] = Field(
+        None, description="User ID for auditability and session traceability"
+    )
+    wake_session_id: Optional[int] = Field(
+        None, description="WakeSession ID for auditability and session traceability"
+    )
+    alarm_id: Optional[int] = Field(
+        None, description="Associated Alarm ID if session was triggered by an alarm"
+    )
+    decision_rationale: Optional[str] = Field(
+        None, description="Concise explainable rationale for the final decision"
+    )
+    feature_snapshot: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Snapshot of pre-challenge input features at decision time",
+    )
+
+    @property
+    def recommended_difficulty(self) -> str:
+        """Alias for interoperability with PersonalizationDecision consumers."""
+        return self.final_difficulty
+
+    @field_validator("challenge_type")
+    @classmethod
+    def validate_challenge_type(cls, v: Any) -> str:
+        """Validate canonical challenge type."""
+        if not isinstance(v, str):
+            raise ValueError("challenge_type must be a string.")
+        clean = v.strip().lower()
+        if clean in FORBIDDEN_CHALLENGE_TYPES:
+            raise ValueError(
+                f"Forbidden challenge type '{v}'. Memory challenges strictly forbid number guessing."
+            )
+        if clean not in VALID_CHALLENGE_TYPES:
+            raise ValueError(
+                f"Invalid challenge type '{v}'. Must be one of: {sorted(list(VALID_CHALLENGE_TYPES))}."
+            )
+        return clean
+
+    @field_validator("final_difficulty")
+    @classmethod
+    def validate_final_difficulty(cls, v: Any) -> str:
+        """Validate that final difficulty is a concrete easy, medium, or hard level."""
+        val = v.value if isinstance(v, DifficultyLevel) else str(v).strip().lower()
+        if val not in VALID_DIFFICULTY_LEVELS:
+            raise ValueError(
+                f"Invalid final difficulty '{v}'. Must be one of: {sorted(list(VALID_DIFFICULTY_LEVELS))}."
+            )
+        return val
+
+    @field_validator("decision_source")
+    @classmethod
+    def validate_decision_source(cls, v: Any) -> str:
+        """Validate that decision_source is one of the recognized decision paths."""
+        val = v.value if isinstance(v, DecisionSource) else str(v).strip().lower()
+        if val not in VALID_DECISION_SOURCES:
+            raise ValueError(
+                f"Invalid decision source '{v}'. Must be one of: {sorted(list(VALID_DECISION_SOURCES))}."
+            )
+        return val
+
+    @field_validator("raw_model_prediction")
+    @classmethod
+    def validate_raw_model_prediction(cls, v: Optional[Any]) -> Optional[str]:
+        """Validate raw model prediction if present."""
+        if v is None:
+            return None
+        val = v.value if isinstance(v, DifficultyLevel) else str(v).strip().lower()
+        if val not in VALID_DIFFICULTY_LEVELS:
+            raise ValueError(
+                f"Invalid raw model prediction '{v}'. Must be one of: {sorted(list(VALID_DIFFICULTY_LEVELS))}."
+            )
+        return val
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True,
+        json_schema_extra={
+            "example": {
+                "challenge_type": "math",
+                "final_difficulty": "medium",
+                "decision_source": "ml_adaptive",
+                "model_confidence": 0.82,
+                "raw_model_prediction": "medium",
+                "guardrail_applied": False,
+                "guardrail_reason": None,
+                "user_id": 1,
+                "wake_session_id": 42,
+                "alarm_id": 10,
+                "decision_rationale": "Stage 2 ML adaptive: model predicted 'medium' with confidence 0.82.",
+                "feature_snapshot": {
+                    "user_total_wake_sessions": 12,
+                    "current_session_snooze_count": 1,
+                },
+            }
+        },
+    )
