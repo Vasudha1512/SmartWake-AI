@@ -42,5 +42,33 @@ __all__ = [
     "get_challenge_constraints",
     "register_challenge_constraints",
     "sanitize_personalization_context",
+    # Phase 4.2 Math Challenge Exports
+    "MathQuestionItem",
+    "MathChallengePayload",
+    "MathGenerationConstraints",
+    "get_math_difficulty_constraints",
+    "build_math_generation_constraints",
+    "SafeArithmeticEvaluator",
+    "MathAnswerValidator",
+    "MathPromptBuilder",
+    "MathChallengeGenerator",
 ]
+
+# Phase 4.2 Schema and Service Imports
+from backend.app.schemas.math_challenge_schemas import (
+    MathChallengePayload,
+    MathQuestionItem,
+)
+from backend.app.services.genai.math_answer_validator import (
+    MathAnswerValidator,
+    SafeArithmeticEvaluator,
+)
+from backend.app.services.genai.math_challenge_generator import MathChallengeGenerator
+from backend.app.services.genai.math_generation_constraints import (
+    MathGenerationConstraints,
+    build_math_generation_constraints,
+    get_math_difficulty_constraints,
+)
+from backend.app.services.genai.math_prompt_builder import MathPromptBuilder
+
 

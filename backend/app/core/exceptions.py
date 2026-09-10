@@ -162,3 +162,17 @@ class UnsafePersonalizationContextError(GenAIError):
     pass
 
 
+# =============================================================================
+# Math GenAI Challenge Exceptions (Phase 4.2)
+# =============================================================================
+class MathEvaluationError(ChallengeContentValidationError):
+    """Raised when generated math content fails mathematical evaluation, bounds, exact division, or consistency checks."""
+    pass
+
+
+class MathChallengeGenerationError(GenAIError):
+    """Raised when math challenge generation pipeline encounters a coordination or configuration failure."""
+    pass
+
+
+

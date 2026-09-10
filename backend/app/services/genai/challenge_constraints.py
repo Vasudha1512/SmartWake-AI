@@ -98,9 +98,13 @@ def _build_default_push_ups_constraints(challenge_type: str, difficulty: str) ->
     )
 
 
+from backend.app.services.genai.math_generation_constraints import (
+    build_math_generation_constraints,
+)
+
 # Seed initial baseline constraint slots for canonical types
 _CONSTRAINT_REGISTRY = {
-    "math": _build_default_math_constraints,
+    "math": build_math_generation_constraints,
     "memory": _build_default_memory_constraints,
     "tongue_twister": _build_default_tongue_twister_constraints,
     "dance": _build_default_dance_constraints,
