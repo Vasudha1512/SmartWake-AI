@@ -34,6 +34,7 @@ E. Integration:
 """
 from datetime import datetime
 import json
+from typing import cast
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -357,7 +358,7 @@ class TestAdaptiveDecisionEngineInvariants(unittest.TestCase):
         ctx = PersonalizationContext(
             user_id=1,
             wake_session_id=1,
-            alarm_id=int(alarm.id),
+            alarm_id=cast(int, alarm.id),
             challenge_type=str(alarm.selected_challenge_type),
             difficulty_preference=str(alarm.difficulty_preference),
             historical_session_count=2,
@@ -572,7 +573,7 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
             session.add(user)
             session.commit()
             session.refresh(user)
-            self.user_id: int = int(user.id)
+            self.user_id: int = cast(int, user.id)
 
             alarm = Alarm(
                 user_id=self.user_id,
@@ -585,21 +586,21 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
             session.add(alarm)
             session.commit()
             session.refresh(alarm)
-            self.alarm_id: int = int(alarm.id)
+            self.alarm_id: int = cast(int, alarm.id)
 
     def test_start_attempt_adaptive_stage_0_reaches_runtime_generator(self):
         """Final difficulty from AdaptiveDecisionEngine reaches runtime generator and attempt record."""
         with self.SessionLocal() as db:
             wake_session = create_wake_session(
                 db=db,
-                user_id=int(self.user_id),
-                alarm_id=int(self.alarm_id),
+                user_id=self.user_id,
+                alarm_id=self.alarm_id,
             )
 
             # User has 0 historical sessions -> Stage 0 heuristic for math resolves to 'easy'
             req = ChallengeAttemptStartRequest(
-                user_id=int(self.user_id),
-                wake_session_id=int(wake_session.id),
+                user_id=self.user_id,
+                wake_session_id=cast(int, wake_session.id),
                 challenge_type="math",
             )
             attempt = start_challenge_attempt(db, req)
@@ -617,7 +618,7 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
         """Fixed difficulty preference in Alarm is preserved through start_challenge_attempt."""
         with self.SessionLocal() as db:
             alarm = Alarm(
-                user_id=int(self.user_id),
+                user_id=self.user_id,
                 time="08:00",
                 days_of_week="[0,1,2,3,4]",
                 selected_challenge_type="dance",
@@ -630,13 +631,13 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
 
             wake_sess = create_wake_session(
                 db=db,
-                user_id=int(self.user_id),
-                alarm_id=int(alarm.id),
+                user_id=self.user_id,
+                alarm_id=cast(int, alarm.id),
             )
 
             req = ChallengeAttemptStartRequest(
-                user_id=int(self.user_id),
-                wake_session_id=int(wake_sess.id),
+                user_id=self.user_id,
+                wake_session_id=cast(int, wake_sess.id),
             )
             attempt = start_challenge_attempt(db, req)
 
@@ -648,14 +649,14 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
         with self.SessionLocal() as db:
             wake_session = create_wake_session(
                 db=db,
-                user_id=int(self.user_id),
-                alarm_id=int(self.alarm_id),
+                user_id=self.user_id,
+                alarm_id=self.alarm_id,
             )
 
             # Attempt 1: starts attempt
             req1 = ChallengeAttemptStartRequest(
-                user_id=int(self.user_id),
-                wake_session_id=int(wake_session.id),
+                user_id=self.user_id,
+                wake_session_id=cast(int, wake_session.id),
                 challenge_type="math",
             )
             att1 = start_challenge_attempt(db, req1)
@@ -664,15 +665,15 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
             # Submit wrong answer to fail attempt 1
             submit_challenge_attempt(
                 db=db,
-                attempt_id=int(att1.id),
-                user_id=int(self.user_id),
+                attempt_id=cast(int, att1.id),
+                user_id=self.user_id,
                 submission_data={"answer": 999999},  # Incorrect
             )
 
             # Attempt 2: retry must keep math and advance to attempt #2
             req2 = ChallengeAttemptStartRequest(
-                user_id=int(self.user_id),
-                wake_session_id=int(wake_session.id),
+                user_id=self.user_id,
+                wake_session_id=cast(int, wake_session.id),
                 challenge_type="math",
             )
             att2 = start_challenge_attempt(db, req2)
@@ -682,15 +683,15 @@ class TestAdaptiveDecisionEngineIntegration(unittest.TestCase):
             # Submit attempt 2 so no active uncompleted attempt blocks the next attempt
             submit_challenge_attempt(
                 db=db,
-                attempt_id=int(att2.id),
-                user_id=int(self.user_id),
+                attempt_id=cast(int, att2.id),
+                user_id=self.user_id,
                 submission_data={"answer": 999999},  # Incorrect
             )
 
             # Cannot switch challenge type on retry (attempt #3)
             req_invalid = ChallengeAttemptStartRequest(
-                user_id=int(self.user_id),
-                wake_session_id=int(wake_session.id),
+                user_id=self.user_id,
+                wake_session_id=cast(int, wake_session.id),
                 challenge_type="dance",
             )
             with self.assertRaises(InvalidChallengeTypeError):
