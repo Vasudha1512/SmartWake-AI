@@ -14,3 +14,10 @@ Current challenge types include:
 Generative AI can be used to create personalized daily challenges, while AI/computer vision can optionally verify physical or object-based tasks.
 
 The project is being developed as a web application using React and FastAPI, with Python-based machine learning. A mobile application is planned as a future extension.
+
+## Architecture Phases
+- **Phase 1:** Core Data Models, Database Schemas & Session Management
+- **Phase 2:** Alarm Scheduling, Challenge Catalog & Verification Engine
+- **Phase 3:** Machine Learning Adaptive Intelligence (Feature Engineering, Baseline Classifier, Personalization Engine, Adaptive Decision Engine)
+- **Phase 4:** Generative AI Architecture & Challenge Generation (Foundation, Provider Abstraction, Multi-Category Synthesis, Fallback)
+  - See [docs/architecture/genai_architecture.md](docs/architecture/genai_architecture.md) for Phase 4 GenAI architecture specifications.

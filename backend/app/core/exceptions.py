@@ -114,3 +114,37 @@ class ActiveChallengeAttemptExistsError(SmartWakeException):
 class ChallengeAttemptCompletedError(SmartWakeException):
     """Raised when attempting to submit an already completed challenge attempt."""
     pass
+
+
+# =============================================================================
+# Generative AI Exceptions (Phase 4.0)
+# =============================================================================
+class GenAIError(SmartWakeException):
+    """Base exception for all Generative AI domain errors."""
+    pass
+
+
+class GenAIConfigurationError(GenAIError):
+    """Raised when GenAI configuration or credentials are missing or invalid."""
+    pass
+
+
+class GenAIProviderUnavailableError(GenAIError):
+    """Raised when the requested GenAI provider is unreachable or returns an error."""
+    pass
+
+
+class GenAITimeoutError(GenAIError):
+    """Raised when a GenAI request exceeds the configured timeout duration."""
+    pass
+
+
+class GenAIRateLimitError(GenAIError):
+    """Raised when an external GenAI provider returns a rate limit or quota exceeded error."""
+    pass
+
+
+class GenAIValidationError(GenAIError):
+    """Raised when GenAI response payload fails structured validation or formatting rules."""
+    pass
+

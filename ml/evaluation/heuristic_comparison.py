@@ -18,7 +18,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 # Ensure project root is in sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -133,9 +133,9 @@ def predict_stage_1_contextual(df: pd.DataFrame) -> pd.Series:
 # -----------------------------------------------------------------------------
 
 def evaluate_predictions(
-    y_true: pd.Series,
-    y_pred: pd.Series,
-    df_features: pd.DataFrame,
+    y_true: Union[pd.Series, Any],
+    y_pred: Union[pd.Series, Any],
+    df_features: Union[pd.DataFrame, Any],
     strategy_name: str,
 ) -> Dict[str, Any]:
     """Compute multi-class metrics and operational error profile for any strategy."""
@@ -240,8 +240,8 @@ def run_heuristic_comparison(
     }
 
     for split_name, s_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
-        X = s_df[MODEL_INPUT_FEATURES]
-        y_true = s_df["optimal_difficulty"]
+        X = cast(pd.DataFrame, s_df[MODEL_INPUT_FEATURES])
+        y_true = cast(pd.Series, s_df["optimal_difficulty"])
 
         # 1. ML Model Predictions
         ml_preds = pd.Series(pipeline.predict(X), index=s_df.index, name="ml_pred")

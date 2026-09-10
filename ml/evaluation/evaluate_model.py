@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, cast
 
 # Ensure project root is in sys.path when executed directly
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -62,8 +62,8 @@ TARGET_SEMANTICS_METADATA = {
 
 def evaluate_split_detailed(
     pipeline: Any,
-    X: pd.DataFrame,
-    y: pd.Series,
+    X: Union[pd.DataFrame, Any],
+    y: Union[pd.Series, Any],
     split_name: str,
 ) -> Dict[str, Any]:
     """Compute detailed multi-class classification and confidence metrics for a split.
@@ -209,14 +209,14 @@ def run_offline_evaluation(
     pipeline = joblib.load(model_path)
 
     # 5. Evaluate on all three splits
-    X_train = train_df[MODEL_INPUT_FEATURES]
-    y_train = train_df["optimal_difficulty"]
+    X_train = cast(pd.DataFrame, train_df[MODEL_INPUT_FEATURES])
+    y_train = cast(pd.Series, train_df["optimal_difficulty"])
 
-    X_val = val_df[MODEL_INPUT_FEATURES]
-    y_val = val_df["optimal_difficulty"]
+    X_val = cast(pd.DataFrame, val_df[MODEL_INPUT_FEATURES])
+    y_val = cast(pd.Series, val_df["optimal_difficulty"])
 
-    X_test = test_df[MODEL_INPUT_FEATURES]
-    y_test = test_df["optimal_difficulty"]
+    X_test = cast(pd.DataFrame, test_df[MODEL_INPUT_FEATURES])
+    y_test = cast(pd.Series, test_df["optimal_difficulty"])
 
     train_eval = evaluate_split_detailed(pipeline, X_train, y_train, "train")
     val_eval = evaluate_split_detailed(pipeline, X_val, y_val, "val")
