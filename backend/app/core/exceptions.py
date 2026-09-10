@@ -148,3 +148,17 @@ class GenAIValidationError(GenAIError):
     """Raised when GenAI response payload fails structured validation or formatting rules."""
     pass
 
+
+# =============================================================================
+# Challenge Content Framework Exceptions (Phase 4.1)
+# =============================================================================
+class ChallengeContentValidationError(GenAIValidationError):
+    """Raised when generated challenge content fails domain safety, size, or structure validation."""
+    pass
+
+
+class UnsafePersonalizationContextError(GenAIError):
+    """Raised when personalization context contains disallowed identity keys, oversized data, or malformed values."""
+    pass
+
+

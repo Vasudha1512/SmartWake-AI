@@ -1,5 +1,20 @@
-"""Generative AI Service Package for SmartWake AI (Phase 4.0 Foundation)."""
+"""Generative AI Service Package for SmartWake AI (Phases 4.0 & 4.1)."""
+from backend.app.schemas.challenge_content_schemas import (
+    ChallengeGenerationConstraints,
+    ContentValidationResult,
+    SafePersonalizationContext,
+    ValidatedChallengeContent,
+)
 from backend.app.services.genai.base_provider import BaseGenAIProvider
+from backend.app.services.genai.challenge_constraints import (
+    get_challenge_constraints,
+    register_challenge_constraints,
+)
+from backend.app.services.genai.challenge_content_framework import (
+    ChallengeContentFramework,
+    sanitize_personalization_context,
+)
+from backend.app.services.genai.challenge_content_validator import ChallengeContentValidator
 from backend.app.services.genai.gemini_provider import GeminiProvider
 from backend.app.services.genai.genai_service import GenAIService
 from backend.app.services.genai.mock_provider import MockGenAIProvider
@@ -17,4 +32,15 @@ __all__ = [
     "get_genai_provider",
     "list_registered_providers",
     "register_provider",
+    # Phase 4.1 Framework Exports
+    "ChallengeContentFramework",
+    "ChallengeContentValidator",
+    "SafePersonalizationContext",
+    "ChallengeGenerationConstraints",
+    "ValidatedChallengeContent",
+    "ContentValidationResult",
+    "get_challenge_constraints",
+    "register_challenge_constraints",
+    "sanitize_personalization_context",
 ]
+

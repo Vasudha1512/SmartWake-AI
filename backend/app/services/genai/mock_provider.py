@@ -89,17 +89,41 @@ class MockGenAIProvider(BaseGenAIProvider):
         if self._canned_content is not None:
             content = dict(self._canned_content)
         else:
+            verif_mode = f"{request.challenge_type}_standard"
+            generic_payload: Dict[str, Any] = {
+                "mock_data": f"generic-contract-content-{request.challenge_type}",
+            }
+            if request.challenge_type == "math":
+                generic_payload["questions"] = [{"mock_id": 1, "text": "mock"}]
+            elif request.challenge_type == "memory":
+                generic_payload["recall_mode"] = "visual_sequence"
+            elif request.challenge_type == "tongue_twister":
+                generic_payload["passage"] = "mock passage"
+            elif request.challenge_type == "dance":
+                generic_payload["steps"] = ["step1"]
+            elif request.challenge_type == "push_ups":
+                generic_payload["target_repetitions"] = 10
+
             content = {
                 "contract_valid": True,
                 "challenge_type": request.challenge_type,
                 "difficulty_level": request.difficulty_level,
+                "title": f"Mock {request.challenge_type.replace('_', ' ').title()} Challenge",
+                "instructions": (
+                    f"Contract-level mock instructions for '{request.challenge_type}' "
+                    f"at difficulty '{request.difficulty_level}'."
+                ),
+                "content_payload": generic_payload,
                 "mock_identifier": f"mock-{request.challenge_type}-{request.difficulty_level}",
                 "generated_text": (
                     f"Contract-level mock challenge content for '{request.challenge_type}' "
                     f"at difficulty '{request.difficulty_level}'."
                 ),
                 "parameters": dict(request.context_payload),
+                "verification_mode": verif_mode,
+                "min_duration_seconds": 10,
             }
+
 
         return GenAIGenerationResponse(
             content=content,

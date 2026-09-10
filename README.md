@@ -19,5 +19,6 @@ The project is being developed as a web application using React and FastAPI, wit
 - **Phase 1:** Core Data Models, Database Schemas & Session Management
 - **Phase 2:** Alarm Scheduling, Challenge Catalog & Verification Engine
 - **Phase 3:** Machine Learning Adaptive Intelligence (Feature Engineering, Baseline Classifier, Personalization Engine, Adaptive Decision Engine)
-- **Phase 4:** Generative AI Architecture & Challenge Generation (Foundation, Provider Abstraction, Multi-Category Synthesis, Fallback)
+- **Phase 4:** Generative AI Architecture & Challenge Generation (Foundation, Provider Abstraction, Content Framework, Multi-Category Synthesis, Fallback)
   - See [docs/architecture/genai_architecture.md](docs/architecture/genai_architecture.md) for Phase 4 GenAI architecture specifications.
+  - See [docs/architecture/personalized_challenge_content_framework.md](docs/architecture/personalized_challenge_content_framework.md) for Phase 4.1 Content Framework specifications.
