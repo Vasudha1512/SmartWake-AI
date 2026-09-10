@@ -15,14 +15,20 @@ PRECEDENCE RULES:
    'adaptive' is never a final concrete challenge difficulty.
 """
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from backend.app.schemas.personalization_schemas import (
     VALID_DIFFICULTY_LEVELS,
     DecisionSource,
     DifficultyLevel,
     PersonalizationContext,
+    PersonalizationDecision,
 )
+from backend.app.services.model_inference_manager import (
+    ModelInferenceManager,
+    ModelInferenceResult,
+)
+from ml.preprocessing.feature_schema import ChallengeFeatureRecord
 
 # Canonical ordering of difficulty levels for step-shift calculations
 DIFFICULTY_ORDER: List[str] = [
@@ -399,3 +405,310 @@ class ColdStartRouter:
                     "requires ML baseline model inference."
                 ),
             )
+
+
+class _DecideDispatcher:
+    """Descriptor enabling PersonalizationEngine.decide to function both as an
+    instance method (preserving custom-injected ModelInferenceManager) and as a
+    class method (instantiating default manager).
+    """
+
+    def __get__(
+        self,
+        obj: Optional["PersonalizationEngine"],
+        objtype: Optional[type] = None,
+    ) -> Any:
+        if obj is not None:
+            def _instance_decide(
+                context: Union[PersonalizationContext, Dict[str, Any]],
+                feature_record: Optional[Union[ChallengeFeatureRecord, Dict[str, Any]]] = None,
+                recent_success_rate: Optional[float] = None,
+                recent_avg_duration_seconds: Optional[float] = None,
+                has_recent_failure: bool = False,
+            ) -> PersonalizationDecision:
+                return obj._decide_impl(
+                    context=context,
+                    feature_record=feature_record,
+                    recent_success_rate=recent_success_rate,
+                    recent_avg_duration_seconds=recent_avg_duration_seconds,
+                    has_recent_failure=has_recent_failure,
+                )
+
+            return _instance_decide
+        else:
+            def _class_decide(
+                context: Union[PersonalizationContext, Dict[str, Any]],
+                feature_record: Optional[Union[ChallengeFeatureRecord, Dict[str, Any]]] = None,
+                recent_success_rate: Optional[float] = None,
+                recent_avg_duration_seconds: Optional[float] = None,
+                has_recent_failure: bool = False,
+                model_manager: Optional[ModelInferenceManager] = None,
+            ) -> PersonalizationDecision:
+                engine = (objtype or PersonalizationEngine)(model_manager=model_manager)
+                return engine._decide_impl(
+                    context=context,
+                    feature_record=feature_record,
+                    recent_success_rate=recent_success_rate,
+                    recent_avg_duration_seconds=recent_avg_duration_seconds,
+                    has_recent_failure=has_recent_failure,
+                )
+
+            return _class_decide
+
+
+class PersonalizationEngine:
+    """Core Personalization Engine for SmartWake AI (Step 3.3.4).
+
+    Orchestrates the end-to-end difficulty personalization process:
+    A. Validates the personalization context and preserves immutable challenge_type.
+    B. Evaluates fixed user preferences with absolute precedence:
+       - easy -> easy, medium -> medium, hard -> hard
+       - strictly bypasses ML inference and adaptive guardrails
+       - decision_source = user_fixed
+    C. For adaptive preferences, evaluates lifecycle stage:
+       - Stage 0 (0-3 sessions): Pure heuristics via ColdStartRouter (no ML)
+       - Stage 1 (4-7 sessions): Contextual rules via ColdStartRouter (no ML)
+       - Stage 2 (8+ sessions): ML model inference via ModelInferenceManager
+    D. Enforces confidence threshold (0.60):
+       - If confidence >= 0.60: candidate is ML predicted difficulty (ml_adaptive)
+       - If confidence < 0.60: candidate falls back to Stage 1 contextual heuristic
+         without fabricating telemetry (fallback_safe)
+    E. Applies SafetyGuardrails to candidate difficulty (for adaptive decisions):
+       - Step-shift clamp (+-1 relative to previous difficulty)
+       - Sleep-inertia floor (snooze >= 3 clamps hard to medium)
+       - Clamped decisions update decision_source to guardrail_clamped
+    F. Returns a complete, validated PersonalizationDecision schema instance.
+    """
+
+    decide = _DecideDispatcher()
+
+    def __init__(
+        self,
+        model_manager: Optional[ModelInferenceManager] = None,
+    ) -> None:
+        """Initialize PersonalizationEngine with an optional ModelInferenceManager."""
+        self.model_manager = model_manager or ModelInferenceManager()
+
+    def _decide_impl(
+        self,
+        context: Union[PersonalizationContext, Dict[str, Any]],
+        feature_record: Optional[Union[ChallengeFeatureRecord, Dict[str, Any]]] = None,
+        recent_success_rate: Optional[float] = None,
+        recent_avg_duration_seconds: Optional[float] = None,
+        has_recent_failure: bool = False,
+    ) -> PersonalizationDecision:
+        """Internal implementation of personalization decision logic."""
+        # A. Validate personalization context
+        if isinstance(context, dict):
+            ctx = PersonalizationContext(**context)
+        elif isinstance(context, PersonalizationContext):
+            ctx = context
+        else:
+            raise ValueError(
+                f"context must be a PersonalizationContext or dict, got {type(context).__name__}"
+            )
+
+        # B. Preserve challenge type exactly
+        challenge_type = ctx.challenge_type
+
+        # C. Fixed user preference has absolute precedence
+        pref = ctx.difficulty_preference.strip().lower()
+        if pref in (
+            DifficultyLevel.EASY.value,
+            DifficultyLevel.MEDIUM.value,
+            DifficultyLevel.HARD.value,
+        ):
+            return PersonalizationDecision(
+                recommended_difficulty=pref,
+                challenge_type=challenge_type,
+                decision_source=DecisionSource.USER_FIXED.value,
+                model_confidence=None,
+                raw_model_prediction=None,
+                guardrail_applied=False,
+                guardrail_reason=None,
+                feature_snapshot={},
+            )
+
+        # D. Adaptive preference handling
+        stage = ColdStartRouter.get_stage(ctx.historical_session_count)
+
+        raw_model_prediction: Optional[str] = None
+        model_confidence: Optional[float] = None
+        feature_snapshot: Dict[str, Any] = {}
+
+        if stage == 0:
+            # Stage 0: Heuristic fallback (0-3 sessions) — never invoke ML
+            candidate_diff, rule_reason = ColdStartRouter.evaluate_stage_0(
+                challenge_type=challenge_type,
+                current_session_snooze_count=ctx.current_session_snooze_count,
+            )
+            candidate_source = DecisionSource.COLD_START_STAGE_0
+
+        elif stage == 1:
+            # Stage 1: Contextual rules (4-7 sessions) — never invoke ML
+            # Extract available telemetry without fabrication
+            eff_success_rate, eff_duration, eff_has_failure = self._resolve_stage_1_telemetry(
+                feature_record=feature_record,
+                recent_success_rate=recent_success_rate,
+                recent_avg_duration_seconds=recent_avg_duration_seconds,
+                has_recent_failure=has_recent_failure,
+            )
+            candidate_diff, rule_reason = ColdStartRouter.evaluate_stage_1(
+                baseline_difficulty=ctx.previous_difficulty,
+                recent_success_rate=eff_success_rate,
+                recent_avg_duration_seconds=eff_duration,
+                has_recent_failure=eff_has_failure,
+            )
+            candidate_source = DecisionSource.COLD_START_STAGE_1
+
+        else:
+            # Stage 2: 8+ sessions — ML inference
+            if feature_record is None:
+                # Telemetry missing: safely fall back to Stage 1 contextual heuristic without fabricating data
+                eff_success_rate, eff_duration, eff_has_failure = self._resolve_stage_1_telemetry(
+                    feature_record=None,
+                    recent_success_rate=recent_success_rate,
+                    recent_avg_duration_seconds=recent_avg_duration_seconds,
+                    has_recent_failure=has_recent_failure,
+                )
+                candidate_diff, fallback_reason = ColdStartRouter.evaluate_stage_1(
+                    baseline_difficulty=ctx.previous_difficulty,
+                    recent_success_rate=eff_success_rate,
+                    recent_avg_duration_seconds=eff_duration,
+                    has_recent_failure=eff_has_failure,
+                )
+                candidate_source = DecisionSource.FALLBACK_SAFE
+            else:
+                # Prepare clean feature input strictly using available features
+                features = self._prepare_ml_features(feature_record, ctx)
+                ml_res = self.model_manager.predict(features)
+                raw_model_prediction = ml_res.predicted_difficulty
+                model_confidence = ml_res.confidence
+                feature_snapshot = ml_res.feature_snapshot
+
+                # E. Confidence handling
+                if ml_res.meets_confidence_threshold:
+                    candidate_diff = ml_res.predicted_difficulty
+                    candidate_source = DecisionSource.ML_ADAPTIVE
+                else:
+                    # Low-confidence ML: safe fallback to Stage 1 contextual heuristic
+                    eff_success_rate, eff_duration, eff_has_failure = self._resolve_stage_1_telemetry(
+                        feature_record=feature_record,
+                        recent_success_rate=recent_success_rate,
+                        recent_avg_duration_seconds=recent_avg_duration_seconds,
+                        has_recent_failure=has_recent_failure,
+                    )
+                    candidate_diff, fallback_reason = ColdStartRouter.evaluate_stage_1(
+                        baseline_difficulty=ctx.previous_difficulty,
+                        recent_success_rate=eff_success_rate,
+                        recent_avg_duration_seconds=eff_duration,
+                        has_recent_failure=eff_has_failure,
+                    )
+                    candidate_source = DecisionSource.FALLBACK_SAFE
+
+        # F. Apply safety guardrails to adaptive candidate
+        guardrail_res = SafetyGuardrails.apply_guardrails(
+            candidate_difficulty=candidate_diff,
+            previous_difficulty=ctx.previous_difficulty,
+            current_session_snooze_count=ctx.current_session_snooze_count,
+        )
+
+        final_difficulty = guardrail_res.final_difficulty
+        guardrail_applied = guardrail_res.guardrail_applied
+        guardrail_reason = guardrail_res.guardrail_reason
+
+        if guardrail_applied:
+            final_decision_source = DecisionSource.GUARDRAIL_CLAMPED.value
+        else:
+            final_decision_source = candidate_source.value
+
+        # G. Return complete PersonalizationDecision
+        return PersonalizationDecision(
+            recommended_difficulty=final_difficulty,
+            challenge_type=challenge_type,
+            decision_source=final_decision_source,
+            model_confidence=model_confidence,
+            raw_model_prediction=raw_model_prediction,
+            guardrail_applied=guardrail_applied,
+            guardrail_reason=guardrail_reason,
+            feature_snapshot=feature_snapshot,
+        )
+
+    @staticmethod
+    def _resolve_stage_1_telemetry(
+        feature_record: Optional[Union[ChallengeFeatureRecord, Dict[str, Any]]],
+        recent_success_rate: Optional[float],
+        recent_avg_duration_seconds: Optional[float],
+        has_recent_failure: bool,
+    ) -> Tuple[Optional[float], Optional[float], bool]:
+        """Extract available telemetry for Stage 1 contextual rules without fabricating values."""
+        eff_success = recent_success_rate
+        eff_duration = recent_avg_duration_seconds
+        eff_failure = has_recent_failure
+
+        if feature_record is not None:
+            if isinstance(feature_record, ChallengeFeatureRecord):
+                feat_dict = feature_record.to_dict(
+                    include_targets=False, include_metadata=False
+                )
+            elif isinstance(feature_record, dict):
+                feat_dict = feature_record
+            else:
+                feat_dict = {}
+
+            if eff_success is None and "user_recent_challenge_success_rate" in feat_dict:
+                eff_success = feat_dict["user_recent_challenge_success_rate"]
+
+            if eff_duration is None:
+                if (
+                    feat_dict.get("challenge_type_avg_completion_time") is not None
+                    and feat_dict["challenge_type_avg_completion_time"] > 0
+                ):
+                    eff_duration = feat_dict["challenge_type_avg_completion_time"]
+                elif (
+                    feat_dict.get("user_avg_completion_time_seconds") is not None
+                    and feat_dict["user_avg_completion_time_seconds"] > 0
+                ):
+                    eff_duration = feat_dict["user_avg_completion_time_seconds"]
+
+        return eff_success, eff_duration, eff_failure
+
+    @staticmethod
+    def _prepare_ml_features(
+        feature_record: Union[ChallengeFeatureRecord, Dict[str, Any]],
+        context: PersonalizationContext,
+    ) -> Dict[str, Any]:
+        """Prepare feature dict ensuring strictly approved features and immutable context."""
+        if isinstance(feature_record, ChallengeFeatureRecord):
+            raw_dict = feature_record.to_dict(
+                include_targets=False, include_metadata=False
+            )
+        elif isinstance(feature_record, dict):
+            raw_dict = dict(feature_record)
+        else:
+            raise ValueError(
+                f"feature_record must be ChallengeFeatureRecord or dict, got {type(feature_record).__name__}"
+            )
+
+        # Enforce context immutability
+        raw_dict["selected_challenge_type"] = context.challenge_type
+        raw_dict["current_session_snooze_count"] = context.current_session_snooze_count
+
+        # Prevent leakage of preferences and post-challenge targets
+        leakage_keys = [
+            "user_selected_difficulty",
+            "is_adaptive_preference",
+            "target_is_successful",
+            "target_duration_seconds",
+            "target_verification_score",
+            "target_attempt_number",
+            "user_id",
+            "wake_session_id",
+            "challenge_attempt_id",
+            "alarm_id",
+            "timestamp",
+        ]
+        for key in leakage_keys:
+            raw_dict.pop(key, None)
+
+        return raw_dict

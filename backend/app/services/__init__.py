@@ -66,6 +66,7 @@ from backend.app.services.personalization_engine import (
     ColdStartResult,
     ColdStartRouter,
     GuardrailResult,
+    PersonalizationEngine,
     SafetyGuardrails,
 )
 from backend.app.services.model_inference_manager import (
@@ -129,6 +130,7 @@ __all__ = [
     "SafetyGuardrails",
     "ColdStartResult",
     "GuardrailResult",
+    "PersonalizationEngine",
     "ModelInferenceManager",
     "ModelInferenceResult",
     "DEFAULT_CONFIDENCE_THRESHOLD",
