@@ -359,12 +359,16 @@ class DeterministicFallbackResolver:
             parameters_tag=entry.parameters_tag,
         )
 
+        clean_trigger = "".join(c if ord(c) >= 32 else " " for c in trigger_error).strip()[:250]
+        if not clean_trigger:
+            clean_trigger = "Fallback triggered due to error."
+
         resolution = FallbackResolution(
             challenge_type=expected_type,
             difficulty_level=expected_difficulty,
             fallback_reason=reason,
             fallback_source=FallbackSource.PROCEDURAL_CATALOG,
-            trigger_error=trigger_error[:250],
+            trigger_error=clean_trigger,
             preserved_type=True,
             preserved_difficulty=True,
             fallback_payload=payload_contract,

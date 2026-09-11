@@ -11,11 +11,11 @@ ARCHITECTURAL RULES:
 5. Atomic transaction safety across WakeSession state updates and attempt tracking.
 """
 import json
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Union, cast
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.core.datetime_utils import diff_seconds, now_utc_naive
+from backend.app.core.datetime_utils import diff_seconds, now_utc, now_utc_naive
 from backend.app.core.exceptions import (
     ActiveChallengeAttemptExistsError,
     ChallengeAttemptCompletedError,
@@ -31,14 +31,48 @@ from backend.app.models.alarm import Alarm
 from backend.app.models.challenge import Challenge
 from backend.app.models.challenge_attempt import ChallengeAttempt
 from backend.app.models.wake_session import WakeSession
-from backend.app.schemas.challenge_content_schemas import SafePersonalizationContext
+from backend.app.schemas.challenge_content_schemas import (
+    SafePersonalizationContext,
+    ValidatedChallengeContent,
+)
+from backend.app.schemas.challenge_safety_schemas import ValidationRetryPolicy
 from backend.app.schemas.challenge_schemas import (
     ChallengeAttemptStartRequest,
     RuntimeChallengeGenerationRequest,
 )
+from backend.app.schemas.personalization_content_schemas import (
+    CanonicalChallengeType,
+    CanonicalDifficultyLevel,
+)
 from backend.app.services.adaptive_decision_engine import AdaptiveDecisionEngine
 from backend.app.services.challenge_generation_service import generate_challenge
 from backend.app.services.challenge_verification_service import verify_challenge
+from backend.app.services.genai.genai_service import GenAIService
+from backend.app.services.genai.math_answer_validator import SafeArithmeticEvaluator
+from backend.app.services.genai.math_challenge_generator import MathChallengeGenerator
+from backend.app.services.genai.math_generation_constraints import (
+    get_math_difficulty_constraints,
+)
+from backend.app.services.genai.memory_challenge_generator import MemoryChallengeGenerator
+from backend.app.services.genai.personalization_adapters import (
+    DancePersonalizationAdapterOutput,
+    PushUpPersonalizationAdapterOutput,
+)
+from backend.app.services.genai.safety_retry_orchestrator import (
+    OrchestratedGenerationResult,
+    SafetyRetryOrchestrator,
+)
+from backend.app.services.genai.tongue_twister_challenge_generator import (
+    TongueTwisterChallengeGenerator,
+)
+from backend.app.services.personalization_dispatcher import (
+    DanceDispatchResult,
+    MathDispatchResult,
+    MemoryDispatchResult,
+    PersonalizationDispatchResult,
+    PushUpDispatchResult,
+    TongueTwisterDispatchResult,
+)
 from backend.app.services.runtime_personalization_bridge import (
     RuntimePersonalizationBridge,
     RuntimePersonalizationBundle,
@@ -53,10 +87,262 @@ from backend.app.services.wake_session_service import (
 )
 
 
+def _build_generator_func(
+    dispatch_res: PersonalizationDispatchResult,
+    target_diff: str,
+    genai_service: Optional[GenAIService] = None,
+) -> Callable[[], object]:
+    """Construct an untrusted generation callable for SafetyRetryOrchestrator."""
+    c_type = dispatch_res.challenge_type
+
+    if isinstance(dispatch_res, MathDispatchResult):
+        def _gen_math() -> object:
+            gen = MathChallengeGenerator(genai_service=genai_service)
+            return gen.generate_math_challenge(
+                difficulty_level=dispatch_res.generator_input.difficulty_level,
+                challenge_type=dispatch_res.generator_input.challenge_type,
+                raw_context=dispatch_res.generator_input.raw_context,
+                strict_context=dispatch_res.generator_input.strict_context,
+            )
+        return _gen_math
+
+    elif isinstance(dispatch_res, MemoryDispatchResult):
+        def _gen_memory() -> object:
+            gen = MemoryChallengeGenerator(genai_service=genai_service)
+            return gen.generate_memory_challenge(
+                difficulty_level=dispatch_res.generator_input.difficulty_level,
+                challenge_type=dispatch_res.generator_input.challenge_type,
+                raw_context=dispatch_res.generator_input.raw_context,
+                strict_context=dispatch_res.generator_input.strict_context,
+                preferred_mode=dispatch_res.generator_input.preferred_mode,
+            )
+        return _gen_memory
+
+    elif isinstance(dispatch_res, TongueTwisterDispatchResult):
+        def _gen_tongue_twister() -> object:
+            gen = TongueTwisterChallengeGenerator(genai_service=genai_service)
+            return gen.generate_tongue_twister_challenge(
+                difficulty_level=dispatch_res.generator_input.difficulty_level,
+                challenge_type=dispatch_res.generator_input.challenge_type,
+                raw_context=dispatch_res.generator_input.raw_context,
+                strict_context=dispatch_res.generator_input.strict_context,
+            )
+        return _gen_tongue_twister
+
+    elif isinstance(dispatch_res, DanceDispatchResult):
+        def _gen_dance() -> object:
+            adapter_out = dispatch_res.adapter_output
+            duration = adapter_out.desired_duration_seconds or (
+                20 if target_diff == "easy" else (30 if target_diff == "medium" else 45)
+            )
+            duration = max(10, min(120, duration))
+            step_count = 4 if target_diff == "easy" else (6 if target_diff == "medium" else 8)
+            tempo = 100 if target_diff == "easy" else (115 if target_diff == "medium" else 130)
+            if adapter_out.pacing == "slow":
+                tempo = max(60, tempo - 15)
+            elif adapter_out.pacing == "dynamic":
+                tempo = min(180, tempo + 15)
+
+            movement_pool = [
+                "Step Left & Bounce",
+                "Step Right & Bounce",
+                "Overhead Arm Wave",
+                "High Knee March Left",
+                "High Knee March Right",
+                "Cross-Body Tap Left",
+                "Cross-Body Tap Right",
+                "Double Clap & Pivot",
+            ]
+            time_step = round(duration / max(step_count, 1), 1)
+            steps = [
+                {
+                    "step_number": i,
+                    "action": movement_pool[(i - 1) % len(movement_pool)],
+                    "cue_second": round((i - 1) * time_step, 1),
+                }
+                for i in range(1, step_count + 1)
+            ]
+            return {
+                "challenge_type": "dance",
+                "difficulty_level": target_diff,
+                "title": "Morning Groove Routine",
+                "instructions": "Follow the rhythmic movement cues shown on screen until routine completes.",
+                "content_payload": {
+                    "routine_type": adapter_out.movement_style or "rhythm_groove",
+                    "step_count": step_count,
+                    "target_duration_seconds": duration,
+                    "tempo_bpm": tempo,
+                    "steps": steps,
+                },
+                "verification_mode": "development_manual",
+                "min_duration_seconds": max(5, duration // 2),
+            }
+        return _gen_dance
+
+    elif isinstance(dispatch_res, PushUpDispatchResult):
+        def _gen_push_ups() -> object:
+            adapter_out = dispatch_res.adapter_output
+            base_reps = 5 if target_diff == "easy" else (12 if target_diff == "medium" else 25)
+            if adapter_out.target_rep_styling == "tier_min":
+                target_reps = 3 if target_diff == "easy" else (8 if target_diff == "medium" else 15)
+            elif adapter_out.target_rep_styling == "tier_max":
+                target_reps = 10 if target_diff == "easy" else (20 if target_diff == "medium" else 35)
+            else:
+                target_reps = base_reps
+
+            window_seconds = 30 if target_diff == "easy" else (45 if target_diff == "medium" else 60)
+            min_rom = 85 if target_diff == "hard" else 75
+            cadence = adapter_out.cadence_tempo or "moderate"
+
+            return {
+                "challenge_type": "push_ups",
+                "difficulty_level": target_diff,
+                "title": "Morning Push-ups",
+                "instructions": f"Perform {target_reps} push-ups with steady form to dismiss the alarm.",
+                "content_payload": {
+                    "target_repetitions": target_reps,
+                    "completion_window_seconds": window_seconds,
+                    "min_rom_percentage": min_rom,
+                    "cadence_guideline": cadence,
+                    "form_instructions": (
+                        "Maintain a plank posture, lower chest to hover above floor level, "
+                        "and extend elbows fully at the peak of each repetition."
+                    ),
+                },
+                "expected_answer": {"target_repetitions": target_reps},
+                "verification_mode": "development_manual",
+                "min_duration_seconds": 10,
+            }
+        return _gen_push_ups
+
+    raise InvalidChallengeTypeError(f"Unsupported challenge type '{c_type}'.")
+
+
+def _normalize_prompt_payload(
+    orchestrated_result: OrchestratedGenerationResult,
+    target_type: str,
+    target_diff: str,
+    challenge_id: Optional[int],
+) -> Dict[str, Any]:
+    """Normalize final validated/fallback content for ChallengeAttempt.prompt_content."""
+    content = orchestrated_result.content
+
+    if isinstance(content, ValidatedChallengeContent):
+        payload_dict = dict(content.content_payload)
+        title = content.title
+        instructions = content.instructions
+        parameters = dict(content.parameters)
+        expected_answer = content.expected_answer
+        verification_mode = content.verification_mode
+        min_duration_seconds = content.min_duration_seconds
+    elif isinstance(content, Mapping):
+        raw_payload = (
+            content.get("content_payload")
+            or content.get("generated_content")
+            or content.get("content")
+        )
+        if isinstance(raw_payload, Mapping):
+            payload_dict = dict(raw_payload)
+        else:
+            payload_dict = dict(content)
+        title = str(content.get("title") or f"Morning {target_type.replace('_', ' ').title()}")
+        instructions = str(content.get("instructions") or "")
+        parameters = dict(content.get("parameters") or {})
+        expected_answer = content.get("expected_answer")
+        verification_mode = str(content.get("verification_mode") or f"{target_type}_standard")
+        min_duration_seconds = int(content.get("min_duration_seconds", 10))
+    else:
+        payload_dict = {}
+        title = f"Morning {target_type.replace('_', ' ').title()}"
+        instructions = ""
+        parameters = {}
+        expected_answer = None
+        verification_mode = f"{target_type}_standard"
+        min_duration_seconds = 10
+
+    # Ensure challenge-type-specific verification alignment
+    if target_type == "math":
+        if expected_answer is None and "expression" in payload_dict:
+            try:
+                m_diff = target_diff if target_diff in ("easy", "medium", "hard") else "medium"
+                constraints = get_math_difficulty_constraints(m_diff)
+                computed_ans, _, _ = SafeArithmeticEvaluator.parse_and_evaluate(
+                    str(payload_dict["expression"]), constraints
+                )
+                expected_answer = computed_ans
+            except Exception:
+                pass
+        if "questions" not in payload_dict and "expression" in payload_dict:
+            payload_dict["questions"] = [
+                {
+                    "question_id": 1,
+                    "prompt": f"{payload_dict['expression']} = ?",
+                    "expression": str(payload_dict["expression"]),
+                    "operation": str(payload_dict.get("operator", "addition")),
+                    "proposed_answer": expected_answer,
+                }
+            ]
+        elif "expression" not in payload_dict and "questions" in payload_dict:
+            q_list = payload_dict["questions"]
+            if isinstance(q_list, list) and len(q_list) > 0 and isinstance(q_list[0], Mapping):
+                payload_dict["expression"] = q_list[0].get("expression", "")
+        if expected_answer is None and "questions" in payload_dict:
+            q_list = payload_dict["questions"]
+            if isinstance(q_list, list) and len(q_list) > 0:
+                ans_list = [q.get("proposed_answer") for q in q_list if isinstance(q, Mapping) and "proposed_answer" in q]
+                if ans_list and len(ans_list) == len(q_list):
+                    expected_answer = ans_list if len(ans_list) > 1 else ans_list[0]
+
+    elif target_type == "memory":
+        mode = payload_dict.get("recall_mode") or payload_dict.get("mode") or "visual_sequence"
+        payload_dict["recall_mode"] = mode
+        payload_dict["mode"] = mode
+        if expected_answer is None:
+            expected_answer = (
+                payload_dict.get("sequence")
+                or payload_dict.get("positions")
+                or payload_dict.get("pattern")
+            )
+
+    elif target_type == "tongue_twister":
+        if expected_answer is None:
+            expected_answer = payload_dict.get("passage") or payload_dict.get("passage_text")
+        if "passage" not in payload_dict and "passage_text" in payload_dict:
+            payload_dict["passage"] = payload_dict["passage_text"]
+        verification_mode = "development_manual"
+
+    elif target_type == "push_ups":
+        reps = payload_dict.get("target_repetitions", 10)
+        if expected_answer is None:
+            expected_answer = {"target_repetitions": reps}
+        verification_mode = "development_manual"
+
+    elif target_type == "dance":
+        verification_mode = "development_manual"
+
+    return {
+        "challenge_id": challenge_id,
+        "challenge_type": target_type,
+        "difficulty_level": target_diff,
+        "title": title,
+        "instructions": instructions,
+        "generated_content": payload_dict,
+        "content_payload": payload_dict,
+        "parameters": parameters,
+        "expected_answer": expected_answer,
+        "verification_mode": verification_mode,
+        "min_duration_seconds": min_duration_seconds,
+        "generated_at": now_utc().isoformat(),
+        "is_fallback": orchestrated_result.is_fallback,
+    }
+
+
 def start_challenge_attempt(
     db: Session,
     request: ChallengeAttemptStartRequest,
     decision_engine: Optional[AdaptiveDecisionEngine] = None,
+    genai_service: Optional[GenAIService] = None,
+    retry_policy: Optional[ValidationRetryPolicy] = None,
 ) -> ChallengeAttempt:
     """Start and persist a new challenge execution attempt for an active WakeSession.
 
@@ -142,6 +428,7 @@ def start_challenge_attempt(
 
     # Resolve template ID if specified
     template_id_to_use = request.challenge_id
+    template: Optional[Challenge] = None
     if template_id_to_use is not None:
         template = db.get(Challenge, template_id_to_use)
         if not template:
@@ -181,36 +468,77 @@ def start_challenge_attempt(
         target_type = decision.challenge_type
         target_diff = decision.final_difficulty
 
-    # 4. Generate in-memory RuntimeChallenge instance
-    gen_req = RuntimeChallengeGenerationRequest(
-        template_id=template_id_to_use,
-        challenge_type=target_type if template_id_to_use is None else None,
-        difficulty_level=target_diff if template_id_to_use is None else None,
+    # 4. Build runtime personalization profile & bundle (Phase 4.7-A bridge)
+    explicit_ctx = getattr(request, "personalization_context", None)
+    bundle = prepare_runtime_personalization(
+        db=db,
+        wake_session=session,
+        challenge_type=target_type,
+        difficulty_level=target_diff,
+        current_attempt_number=attempt_number,
+        explicit_context=explicit_ctx,
     )
-    runtime_res = generate_challenge(db, gen_req)
 
-    # 6. Serialize runtime challenge into prompt_content
-    prompt_payload = {
-        "challenge_id": runtime_res.challenge_id,
-        "challenge_type": runtime_res.challenge_type,
-        "difficulty_level": runtime_res.difficulty_level,
-        "title": runtime_res.title,
-        "generated_content": runtime_res.generated_content,
-        "parameters": runtime_res.parameters,
-        "expected_answer": runtime_res.expected_answer,
-        "verification_mode": runtime_res.verification_mode,
-        "min_duration_seconds": runtime_res.min_duration_seconds,
-        "generated_at": runtime_res.generated_at.isoformat(),
-    }
+    if template_id_to_use is not None:
+        # Explicit template requested: preserve template execution semantics
+        gen_req = RuntimeChallengeGenerationRequest(
+            template_id=template_id_to_use,
+            challenge_type=target_type,
+            difficulty_level=target_diff,
+        )
+        runtime_res = generate_challenge(db, gen_req)
+        prompt_payload = {
+            "challenge_id": template_id_to_use,
+            "challenge_type": runtime_res.challenge_type,
+            "difficulty_level": runtime_res.difficulty_level,
+            "title": runtime_res.title,
+            "instructions": template.description if (template and template.description) else f"Complete the {runtime_res.challenge_type.replace('_', ' ')} challenge.",
+            "generated_content": runtime_res.generated_content,
+            "content_payload": runtime_res.generated_content,
+            "parameters": runtime_res.parameters,
+            "expected_answer": runtime_res.expected_answer,
+            "verification_mode": runtime_res.verification_mode,
+            "min_duration_seconds": runtime_res.min_duration_seconds,
+            "generated_at": runtime_res.generated_at.isoformat(),
+            "is_fallback": False,
+        }
+        if target_type == "math":
+            content_dict = prompt_payload["content_payload"]
+            if isinstance(content_dict, dict) and "expression" not in content_dict and "questions" in content_dict:
+                q_list = content_dict["questions"]
+                if isinstance(q_list, list) and len(q_list) > 0 and isinstance(q_list[0], Mapping):
+                    content_dict["expression"] = q_list[0].get("expression", "")
+        resolved_challenge_id = template_id_to_use
+    else:
+        # Dynamic runtime generation path: dispatch -> SafetyRetryOrchestrator
+        dispatch_res = RuntimePersonalizationBridge.dispatch_runtime_bundle(bundle)
+        generator_func = _build_generator_func(
+            dispatch_res=dispatch_res,
+            target_diff=target_diff,
+            genai_service=genai_service,
+        )
+        orchestrated_result = SafetyRetryOrchestrator.orchestrate(
+            expected_type=cast(CanonicalChallengeType, target_type),
+            expected_difficulty=cast(CanonicalDifficultyLevel, target_diff),
+            generator_func=generator_func,
+            policy=retry_policy,
+        )
+        resolved_challenge_id = None
+        prompt_payload = _normalize_prompt_payload(
+            orchestrated_result=orchestrated_result,
+            target_type=target_type,
+            target_diff=target_diff,
+            challenge_id=None,
+        )
 
     started_at = now_utc_naive()
 
-    # 7. Create ChallengeAttempt record
+    # 9. Create ChallengeAttempt record
     attempt = ChallengeAttempt(
         wake_session_id=session.id,
-        challenge_id=runtime_res.challenge_id,
-        challenge_type=runtime_res.challenge_type,
-        difficulty_level=runtime_res.difficulty_level,
+        challenge_id=resolved_challenge_id,
+        challenge_type=target_type,
+        difficulty_level=target_diff,
         prompt_content=json.dumps(prompt_payload),
         attempt_number=attempt_number,
         started_at=started_at,
@@ -223,7 +551,7 @@ def start_challenge_attempt(
     )
     db.add(attempt)
 
-    # 8. Update WakeSession status to in_challenge
+    # 10. Update WakeSession status to in_challenge only after valid attempt creation
     if session.status in (STATUS_RINGING, STATUS_SNOOZED):
         session.status = STATUS_IN_CHALLENGE
 

@@ -89,8 +89,20 @@ from backend.app.services.runtime_personalization_bridge import (
     RuntimePersonalizationBridge,
     RuntimePersonalizationBundle,
 )
+from backend.app.services.challenge_execution_service import (
+    get_challenge_attempt,
+    list_attempts_for_wake_session,
+    prepare_runtime_personalization,
+    start_challenge_attempt,
+    submit_challenge_attempt,
+)
 
 __all__ = [
+    "start_challenge_attempt",
+    "submit_challenge_attempt",
+    "get_challenge_attempt",
+    "list_attempts_for_wake_session",
+    "prepare_runtime_personalization",
     "list_active_challenges",
     "get_challenge_by_id",
     "get_challenge_by_type",
