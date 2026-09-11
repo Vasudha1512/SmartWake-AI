@@ -128,6 +128,7 @@ class TestSafetyViolationAndDetails(unittest.TestCase):
         )
         self.assertEqual(v.severity, SafetySeverity.WARNING)
         self.assertIsNotNone(v.details)
+        assert v.details is not None
         self.assertEqual(v.details.rule_id, "RULE_TT_ALLITERATION_DENSITY")
         self.assertEqual(v.details.numeric_measurement, 0.32)
 

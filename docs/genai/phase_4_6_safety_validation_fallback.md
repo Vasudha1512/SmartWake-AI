@@ -2,13 +2,13 @@
 
 **SmartWake AI** — Personalized Adaptive Smart Alarm Clock  
 **Package:** `backend.app.services.genai` & `backend.app.schemas`  
-**Status:** Completed & Tested (Phase 4.6 Fast-Track: 4.6.1 – 4.6.8)
+**Status:** Completed, Integrated & Formally Audited (Phase 4.6 Steps 1–11)
 
 ---
 
 ## 1. Overview & Architecture Boundary
 
-The Phase 4.6 Safety & Validation layer guards the SmartWake AI challenge generation pipeline. It sits between raw/untrusted GenAI outputs and user-facing alarm execution. Its core mission is ensuring that **no alarm ever fails to ring or presents an unsafe/malformed challenge to a waking user**, regardless of LLM errors, prompt injection, invalid outputs, rate limits, or network timeouts.
+The Phase 4.6 Safety & Validation layer guards the SmartWake AI challenge generation pipeline. It sits between raw/untrusted GenAI outputs and user-facing challenge execution. Its architectural guarantee is that **any GenAI generation error, provider failure, or content safety violation has a strictly bounded path to a validated deterministic offline fallback whenever fallback is available**.
 
 ```
 Untrusted GenAI / Provider Output
@@ -37,22 +37,21 @@ Untrusted GenAI / Provider Output
 
 ---
 
-## 2. Validation Architecture
+## 2. Detailed Validation Architecture
 
-Validation strictly follows a two-stage sequential evaluation producing an immutable `SafetyValidationReport`. Content is **never silently sanitized**; invalid content is strictly rejected.
+### A. Common Output Validation (`CommonOutputSafetyValidator`)
+- **Structural Sanity:** Verifies payload is a dictionary/object with non-empty required fields (`title`, `instructions`, `content_payload`).
+- **Control Character Defense:** Rejects dangerous unprintable control characters (`ord < 32` except `\t`, `\n`, `\r`, and `127`).
+- **Prompt Injection Defense:** Scans title and instruction strings for prompt-injection markers (`ignore previous instructions`, `bypass safety rules`, `reveal system prompt`, etc.).
+- **Harmful Content Guard:** Scans text fields for self-harm, violent instructions, or hazardous morning wake-up commands.
 
-### Stage 1: Common Output Validation (`CommonOutputSafetyValidator`)
-- **Structural Integrity:** Rejects non-dict payloads, missing required fields (`title`, `instructions`, `content_payload`), or empty text.
-- **Contract Preservation:** Verifies `challenge_type` matches expected canonical type and `difficulty_level` matches expected difficulty.
-- **Safety & Injection Defense:** Inspects text fields for prompt injection indicators (`ignore previous instructions`, `bypass safety rules`) and toxic/harmful keywords using regex pattern boundaries.
-
-### Stage 2: Domain-Specific Validation (`DomainSafetyValidator`)
+### B. Domain-Specific Safety Validation (`DomainSafetyValidator`)
 - **Math Challenges:**
   - Validates arithmetic expressions via `SafeArithmeticEvaluator` and `MATH_GENERATION_CONSTRAINTS`.
   - Rejects division by zero (`MATH_DIVISION_BY_ZERO`), unparseable expressions, and operand/result bounds violations (`MATH_UNSOLVABLE`).
   - Verifies deterministic answer correctness against `expected_answer`.
 - **Memory Challenges:**
-  - Verifies non-empty sequence/grid.
+  - Verifies non-empty sequence/grid via `display_sequence` or `sequence`.
   - Enforces strict non-numeric constraint: rejects pure numeric sequences and digit strings (`MEMORY_NUMERIC_LEAK`), preventing degradation into number-guessing games.
   - Enforces sequence length bounds per difficulty tier (`MEMORY_OUT_OF_BOUNDS`).
   - Validates palette themes against `MemoryPaletteTheme` (`MEMORY_INVALID_PALETTE`).
@@ -61,23 +60,33 @@ Validation strictly follows a two-stage sequential evaluation producing an immut
   - Validates phonetic alliteration characteristics via `TongueTwisterAnswerValidator.validate_orthographic_sound_pattern` (`TWISTER_POOR_ALLITERATION`).
   - Rejects numeric digits (`0-9`) in passages.
 - **Procedural Physical Challenges (Dance & Push-ups):**
-  - Reject impossible/unreasonable physical demands (`PHYSICAL_EXERTION_EXCEEDED`).
+  - Rejects impossible/unreasonable physical demands (`PHYSICAL_EXERTION_EXCEEDED`).
   - Caps push-up repetitions per difficulty (`easy <= 15`, `medium <= 30`, `hard <= 50`).
-  - Caps dance duration (`easy <= 30s`, `medium <= 60s`, `hard <= 90s`) and step counts.
+  - Caps dance duration (`easy <= 30s`, `medium <= 60s`, `hard <= 90s`) and step counts (`[2, 30]`).
+
+### C. Type & Difficulty Preservation
+- **Type Preservation (Invariant G):** The user-selected canonical challenge type (`dance`, `math`, `memory`, `tongue_twister`, `push_ups`) is immutable. Any output attempting type mutation is strictly rejected (`TYPE_MUTATION`).
+- **Difficulty Preservation (Invariant H):** The concrete difficulty tier established by Phase 3 (`easy`, `medium`, `hard`) is immutable. Non-concrete values like `"adaptive"` are rejected (`DIFFICULTY_MUTATION`).
+
+### D. No Silent Sanitization (Invariant I)
+Generated content is **never silently sanitized or mutated**. Malformed or unsafe outputs are strictly flagged with typed `SafetyViolation` objects and rejected. The pipeline either obtains genuinely valid content through a clean retry or resolves to an authoritative deterministic fallback.
+
+### E. Privacy & Zero-PII Boundary (Invariant J)
+- No user IDs, database entities, ORM models, session tokens, or personal identifiers enter or exit the safety pipeline.
+- Diagnostic notes and error logs pass through redaction filters to guarantee zero PII leakage.
 
 ---
 
-## 3. Bounded Retry Boundary (`SafetyRetryOrchestrator`)
+## 3. Bounded Retry Policy (`ValidationRetryPolicy`)
 
-Retries are strictly bounded by `ValidationRetryPolicy` to guarantee execution finishes within alarm ringing windows:
+Retries are strictly managed by `SafetyRetryOrchestrator`:
 
-- **Max Retries:** Default `1`, maximum allowed `2`. Indefinite loops are structurally impossible.
-- **Separation of Concerns:** Validators are pure stateless functions with zero side-effects. Retries are exclusively orchestrated by `SafetyRetryOrchestrator`.
-- **Retry Triggers:**
-  - Common validation failure $\to$ retry with attempt counter increment.
-  - Domain validation failure $\to$ retry with attempt counter increment.
-  - Provider timeout (`GenAITimeoutError`) $\to$ retry if budget allows.
-  - Rate limit (`GenAIRateLimitError`) $\to$ immediate fallback without retries.
+- **Bounded Execution (Invariant L):** Default `max_retries = 1`, maximum allowed `max_retries = 2`. Attempts are mathematically capped at `attempts_used <= max_retries + 1`, structurally eliminating infinite loops.
+- **Separation of Concerns:** Validators are pure stateless functions with zero side-effects. Retries are orchestrated exclusively by `SafetyRetryOrchestrator`.
+- **Policy Behavior:**
+  - Common / Domain validation failure $\to$ attempt counter increments, bounded retry executed if budget permits.
+  - Recoverable provider error (`GenAITimeoutError`) $\to$ retried if attempts remain.
+  - Non-retryable error (`GenAIRateLimitError`, `GenAIProviderUnavailableError`) $\to$ drops immediately to fallback without compounding retries.
 
 ---
 
@@ -85,18 +94,16 @@ Retries are strictly bounded by `ValidationRetryPolicy` to guarantee execution f
 
 When retries are exhausted or a provider failure occurs, the orchestrator triggers deterministic fallback resolution:
 
-- **Zero Network / Zero LLM:** Pre-verified static challenge definitions from `DETERMINISTIC_FALLBACK_CATALOG`.
-- **15 Canonical Combinations:** Complete offline coverage across 5 challenge types (`dance`, `math`, `memory`, `tongue_twister`, `push_ups`) $\times$ 3 difficulties (`easy`, `medium`, `hard`).
-- **Contract Guarantees:**
-  - `preserved_type = True`: The user's selected challenge type is never altered.
-  - `preserved_difficulty = True`: Phase 3's authoritative difficulty tier is strictly maintained.
-  - Returns typed `FallbackResolution` metadata documenting `fallback_reason`, `trigger_error`, and `fallback_reference_id`.
+- **Zero Network / Zero LLM (Invariant K):** Backed by `DETERMINISTIC_FALLBACK_CATALOG`, an immutable in-memory registry of pre-verified challenge payloads.
+- **15 Canonical Combinations:** Complete coverage across 5 challenge types $\times$ 3 difficulties (`easy`, `medium`, `hard`).
+- **Safety Guarantee:** Every single payload in the fallback catalog has been verified to pass 100% of Common and Domain safety rules.
+- **Repeatability:** Identical fallback requests deterministically yield identical payloads and metadata across runs.
 
 ---
 
-## 5. Provider Failure Path
+## 5. Provider Failure Path & Resilience
 
-Provider exceptions are caught cleanly at the orchestration boundary:
+Provider exceptions are caught cleanly at the orchestration boundary without leaking raw errors:
 
 ```
 Provider Invocation
@@ -110,4 +117,27 @@ Provider Invocation
        └─── Unexpected Exception ────────────► Logged safely; FallbackReason.PROVIDER_UNAVAILABLE
 ```
 
-Raw provider stack traces and error details are never exposed to waking users or challenge payloads. The alarm always presents a valid, safe, difficulty-appropriate challenge.
+Raw stack traces, provider-specific details, and network errors are never exposed in challenge content.
+
+---
+
+## 6. Pipeline Integration Flow
+
+The complete integration pipeline connects untrusted providers, validators, retry orchestration, and deterministic fallback:
+
+```
+Generator / Provider Output
+             │
+             ▼
+   Common Output Validator  ──(Fail)──► Attempt Counter < Max? ──(Yes)──► Bounded Retry
+             │ (Pass)                                             ──(No)──►
+             ▼                                                               │
+   Domain-Specific Validator ──(Fail)──► Attempt Counter < Max? ──(Yes)──►   │
+             │ (Pass)                                             ──(No)──►   │
+             ▼                                                               │
+   Success: Validated Content                                                ▼
+                                                                Deterministic Fallback
+                                                                (Preserves Type & Diff)
+```
+
+The resulting `OrchestratedGenerationResult` contains full telemetry (`is_fallback`, `attempts_used`, `report`, `fallback_resolution`), ensuring downstream alarm session execution has complete visibility into generation origin.
