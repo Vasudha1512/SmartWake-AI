@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Union, cast
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from backend.app.core.constants import FORBIDDEN_CHALLENGE_TYPES, VALID_CHALLENGE_TYPES
 from backend.app.core.datetime_utils import diff_seconds, now_utc, now_utc_naive
 from backend.app.core.exceptions import (
     ActiveChallengeAttemptExistsError,
@@ -447,6 +448,19 @@ def start_challenge_attempt(
         target_type = str(template.challenge_type)
         target_diff = str(template.difficulty_level)
     else:
+        # Validate canonical challenge type before ML decisions
+        clean_type = target_type.strip().lower() if target_type else ""
+        if clean_type in FORBIDDEN_CHALLENGE_TYPES:
+            raise InvalidChallengeTypeError(
+                f"Challenge type '{target_type}' is strictly forbidden. "
+                f"Memory challenges must NOT be implemented as number guessing."
+            )
+        if clean_type not in VALID_CHALLENGE_TYPES:
+            raise InvalidChallengeTypeError(
+                f"Invalid challenge type '{target_type}'. Must be one of: {sorted(list(VALID_CHALLENGE_TYPES))}."
+            )
+        target_type = clean_type
+
         # Resolve difficulty via AdaptiveDecisionEngine (Phase 3.4)
         pref_to_use: str
         if request.difficulty_level:
@@ -581,6 +595,7 @@ def submit_challenge_attempt(
     Raises:
         ChallengeAttemptNotFoundError: If attempt does not exist.
         ChallengeAttemptOwnershipError: If attempt does not belong to user.
+        InvalidSessionTransitionError: If wake session is in terminal status.
         ChallengeAttemptCompletedError: If attempt was already submitted.
     """
     # 1. Find attempt
@@ -601,6 +616,13 @@ def submit_challenge_attempt(
     if attempt.completed_at is not None or attempt.is_successful is not None:
         raise ChallengeAttemptCompletedError(
             f"Challenge attempt {attempt_id} has already been completed and submitted."
+        )
+
+    # 4. Prevent submission if WakeSession is already in terminal status
+    if session.status in TERMINAL_STATUSES:
+        raise InvalidSessionTransitionError(
+            f"Cannot submit challenge attempt {attempt_id} for wake session {session.id} "
+            f"because it is already in terminal status '{session.status}'."
         )
 
     # 4. Record completion time and compute non-negative duration
