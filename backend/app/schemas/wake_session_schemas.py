@@ -46,9 +46,9 @@ class WakeSessionResponse(BaseModel):
 
 class SnoozeRequest(BaseModel):
     """Request payload for snoozing an active wake session."""
-    user_id: Optional[int] = Field(None, description="Optional user ID for ownership validation")
-    alarm_id: Optional[int] = Field(None, description="Optional alarm ID for validation")
-    duration_minutes: Optional[int] = Field(5, description="Snooze duration in minutes (model default 5)")
+    user_id: Optional[int] = Field(default=None, description="Optional user ID for ownership validation")
+    alarm_id: Optional[int] = Field(default=None, description="Optional alarm ID for validation")
+    duration_minutes: Optional[int] = Field(default=5, description="Snooze duration in minutes (model default 5)")
 
     model_config = ConfigDict(
         json_schema_extra={

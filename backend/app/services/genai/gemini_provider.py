@@ -4,6 +4,7 @@ Encapsulates REST payload formation, authentication, timeouts, and error mapping
 for Google Gemini without locking the architecture to a single fixed model.
 """
 import json
+import re
 import time
 from typing import Any, Dict, Optional
 import urllib.error
@@ -73,12 +74,27 @@ class GeminiProvider(BaseGenAIProvider):
         return bool(self._api_key and self._api_key.strip())
 
     def _build_endpoint_url(self) -> str:
-        """Build the complete API endpoint URL including model and key parameter."""
+        """Build the complete API endpoint URL for generation."""
         if not self.has_api_key:
             raise GenAIConfigurationError(
                 "Gemini API key is not configured. Set GENAI_API_KEY environment variable."
             )
-        return f"{self._api_base_url}/{self.model_name}:generateContent?key={self._api_key}"
+        return f"{self._api_base_url}/{self.model_name}:generateContent"
+
+    def _sanitize_error_text(self, text: str) -> str:
+        """Sanitize error messages and bodies to prevent API key and credential leakage."""
+        if not text:
+            return ""
+        clean = text
+        if self._api_key and self._api_key.strip():
+            clean = clean.replace(self._api_key.strip(), "[REDACTED]")
+        # Redact any query param style api key: ?key=... or &key=...
+        clean = re.sub(r"([?&]key=)[^&\s\"']+", r"\1[REDACTED]", clean)
+        # Redact x-goog-api-key headers if present in text
+        clean = re.sub(r"(x-goog-api-key:\s*)[^\r\n,]+", r"\1[REDACTED]", clean, flags=re.IGNORECASE)
+        # Redact standard authorization bearer tokens if present in text
+        clean = re.sub(r"(Bearer\s+)[A-Za-z0-9_\-\.]+", r"\1[REDACTED]", clean, flags=re.IGNORECASE)
+        return clean
 
     def build_request_payload(self, request: GenAIContentRequest) -> Dict[str, Any]:
         """Construct the Gemini REST JSON payload for a given request."""
@@ -119,28 +135,26 @@ class GeminiProvider(BaseGenAIProvider):
     def parse_gemini_response(
         self, response_dict: Dict[str, Any], elapsed_ms: float
     ) -> GenAIGenerationResponse:
-        """Parse raw Gemini JSON response into standardized GenAIGenerationResponse."""
+        """Extract and validate generated payload from Gemini candidates structure."""
         try:
             candidates = response_dict.get("candidates", [])
             if not candidates:
-                raise GenAIValidationError("Gemini response returned no candidates.")
+                raise GenAIValidationError("Gemini response contains no generation candidates.")
 
-            content_parts = (
-                candidates[0].get("content", {}).get("parts", [])
-            )
-            if not content_parts:
+            content_block = candidates[0].get("content", {})
+            parts = content_block.get("parts", [])
+            if not parts:
                 raise GenAIValidationError("Gemini candidate contains no content parts.")
 
-            raw_text = content_parts[0].get("text", "")
+            raw_text = parts[0].get("text", "")
             if not raw_text:
-                raise GenAIValidationError("Gemini content part text is empty.")
+                raise GenAIValidationError("Gemini text content part is empty.")
 
-            # Parse JSON content payload
             try:
                 parsed_json = json.loads(raw_text)
             except json.JSONDecodeError as exc:
                 raise GenAIValidationError(
-                    f"Gemini response could not be parsed as JSON: {exc}"
+                    f"Gemini response part text is not valid JSON: {exc}"
                 ) from exc
 
             if not isinstance(parsed_json, dict):
@@ -173,13 +187,16 @@ class GeminiProvider(BaseGenAIProvider):
         payload = self.build_request_payload(request)
         encoded_data = json.dumps(payload).encode("utf-8")
 
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": "SmartWake-AI-Backend/1.0",
+            "x-goog-api-key": self._api_key or "",
+        }
+
         req = urllib.request.Request(
             url=url,
             data=encoded_data,
-            headers={
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": "SmartWake-AI-Backend/1.0",
-            },
+            headers=headers,
             method="POST",
         )
 
@@ -194,11 +211,12 @@ class GeminiProvider(BaseGenAIProvider):
         except urllib.error.HTTPError as exc:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
             status_code = exc.code
-            error_body = ""
+            raw_body = ""
             try:
-                error_body = exc.read().decode("utf-8")
+                raw_body = exc.read().decode("utf-8")
             except Exception:
                 pass
+            error_body = self._sanitize_error_text(raw_body)
 
             if status_code in (401, 403):
                 raise GenAIConfigurationError(
@@ -219,12 +237,13 @@ class GeminiProvider(BaseGenAIProvider):
 
         except (urllib.error.URLError, TimeoutError) as exc:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-            if "timed out" in str(exc).lower() or isinstance(exc, TimeoutError):
+            clean_exc = self._sanitize_error_text(str(exc))
+            if "timed out" in clean_exc.lower() or isinstance(exc, TimeoutError):
                 raise GenAITimeoutError(
-                    f"Gemini request timed out after {self.timeout_seconds}s: {exc}"
+                    f"Gemini request timed out after {self.timeout_seconds}s: {clean_exc}"
                 ) from exc
             raise GenAIProviderUnavailableError(
-                f"Gemini network connection failed: {exc}"
+                f"Gemini network connection failed: {clean_exc}"
             ) from exc
 
     def check_health(self) -> GenAIProviderHealth:
@@ -234,6 +253,7 @@ class GeminiProvider(BaseGenAIProvider):
                 is_healthy=False,
                 provider_name=self.provider_name,
                 model_name=self.model_name,
+                latency_ms=None,
                 message="Gemini provider unconfigured: GENAI_API_KEY is not set.",
                 details={"api_key_configured": False},
             )
@@ -243,6 +263,7 @@ class GeminiProvider(BaseGenAIProvider):
             is_healthy=True,
             provider_name=self.provider_name,
             model_name=self.model_name,
+            latency_ms=None,
             message="Gemini provider configured and ready.",
             details={
                 "api_key_configured": True,

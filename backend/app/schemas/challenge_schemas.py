@@ -119,13 +119,13 @@ class ChallengeAttemptStartRequest(BaseModel):
     user_id: int = Field(..., description="ID of the user attempting the challenge")
     wake_session_id: int = Field(..., description="ID of the active WakeSession")
     challenge_id: Optional[int] = Field(
-        None, description="Optional specific catalog template ID to attempt"
+        default=None, description="Optional specific catalog template ID to attempt"
     )
     challenge_type: Optional[str] = Field(
-        None, description="Optional challenge category override or verification against session"
+        default=None, description="Optional challenge category override or verification against session"
     )
     difficulty_level: Optional[str] = Field(
-        None, description="Optional difficulty tier override ('easy', 'medium', 'hard')"
+        default=None, description="Optional difficulty tier override ('easy', 'medium', 'hard')"
     )
 
 

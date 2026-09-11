@@ -21,7 +21,7 @@ class GenAIContentRequest(BaseModel):
         description="Concrete difficulty tier ('easy', 'medium', 'hard')",
     )
     user_id: Optional[int] = Field(
-        None,
+        default=None,
         description="Optional user ID for future personalization context (Phase 4.5)",
     )
     context_payload: Dict[str, Any] = Field(
@@ -29,7 +29,7 @@ class GenAIContentRequest(BaseModel):
         description="Optional pre-challenge telemetry or context metadata",
     )
     custom_instructions: Optional[str] = Field(
-        None,
+        default=None,
         description="Optional system or prompt guidelines for the provider",
     )
 

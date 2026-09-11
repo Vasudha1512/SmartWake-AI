@@ -23,14 +23,26 @@ FORBIDDEN_CONTEXT_KEYS: Set[str] = {
     "session_id",
     "wake_session_id",
     "password",
+    "passphrase",
     "password_hash",
     "token",
     "access_token",
+    "auth_token",
+    "refresh_token",
+    "session_token",
     "auth",
     "authorization",
     "cookie",
     "api_key",
+    "apikey",
     "secret",
+    "api_secret",
+    "client_secret",
+    "private_key",
+    "credential",
+    "credentials",
+    "jwt",
+    "bearer",
 }
 
 # Regex pattern allowing alphanumeric words, spaces, hyphens, and underscores for topics
@@ -46,7 +58,7 @@ class SafePersonalizationContext(BaseModel):
     """
 
     desired_duration_seconds: Optional[int] = Field(
-        None,
+        default=None,
         ge=5,
         le=300,
         description="User desired challenge duration in seconds (generation styling preference only, NOT an ML target)",
@@ -64,7 +76,7 @@ class SafePersonalizationContext(BaseModel):
         description="Bounded attempt sequence number for this session",
     )
     preferred_theme: Optional[str] = Field(
-        None,
+        default=None,
         max_length=50,
         description="Optional high-level challenge theme or style (e.g., 'morning motivation')",
     )

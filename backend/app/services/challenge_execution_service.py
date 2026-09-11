@@ -25,6 +25,7 @@ from backend.app.core.exceptions import (
     ChallengeNotFoundError,
     InactiveChallengeError,
     InvalidChallengeTypeError,
+    InvalidDifficultyError,
     InvalidSessionTransitionError,
     WakeSessionNotFoundError,
 )
@@ -440,12 +441,55 @@ def start_challenge_attempt(
             raise InactiveChallengeError(
                 f"Cannot execute inactive challenge template id {template.id} ('{template.title}')."
             )
-        if existing_attempts and str(template.challenge_type).lower() != str(existing_attempts[0].challenge_type).lower():
+
+        clean_template_type = template.challenge_type.strip().lower() if template.challenge_type else ""
+        if clean_template_type in FORBIDDEN_CHALLENGE_TYPES:
+            raise InvalidChallengeTypeError(
+                f"Challenge type '{template.challenge_type}' is strictly forbidden. "
+                f"Memory challenges must NOT be implemented as number guessing."
+            )
+        if clean_template_type not in VALID_CHALLENGE_TYPES:
+            raise InvalidChallengeTypeError(
+                f"Invalid challenge type '{template.challenge_type}'. Must be one of: {sorted(list(VALID_CHALLENGE_TYPES))}."
+            )
+
+        # Retries MUST preserve existing session challenge type
+        if existing_attempts and clean_template_type != str(existing_attempts[0].challenge_type).lower():
             raise InvalidChallengeTypeError(
                 f"Template type '{template.challenge_type}' does not match session "
                 f"challenge type '{existing_attempts[0].challenge_type}'."
             )
-        target_type = str(template.challenge_type)
+
+        # On first attempt, template must match requested challenge type if provided
+        if not existing_attempts and request.challenge_type and clean_template_type != request.challenge_type.strip().lower():
+            raise InvalidChallengeTypeError(
+                f"Template type '{template.challenge_type}' does not match requested "
+                f"challenge type '{request.challenge_type}'."
+            )
+
+        # On first attempt, template must match alarm's selected challenge type if alarm is present and no override requested
+        if not existing_attempts and not request.challenge_type and session.alarm_id:
+            alarm = db.get(Alarm, session.alarm_id)
+            if alarm and clean_template_type != str(alarm.selected_challenge_type).lower():
+                raise InvalidChallengeTypeError(
+                    f"Template type '{template.challenge_type}' does not match alarm's "
+                    f"selected challenge type '{alarm.selected_challenge_type}'."
+                )
+
+        # If explicit difficulty was requested, template difficulty must match
+        if request.difficulty_level:
+            clean_req_diff = request.difficulty_level.strip().lower()
+            if clean_req_diff not in ("easy", "medium", "hard", "adaptive"):
+                raise InvalidDifficultyError(
+                    f"Invalid difficulty preference '{request.difficulty_level}'. Must be one of: ['adaptive', 'easy', 'hard', 'medium']."
+                )
+            if str(template.difficulty_level).lower() != clean_req_diff:
+                raise InvalidDifficultyError(
+                    f"Template difficulty '{template.difficulty_level}' does not match requested "
+                    f"difficulty level '{request.difficulty_level}'."
+                )
+
+        target_type = clean_template_type
         target_diff = str(template.difficulty_level)
     else:
         # Validate canonical challenge type before ML decisions
@@ -460,6 +504,14 @@ def start_challenge_attempt(
                 f"Invalid challenge type '{target_type}'. Must be one of: {sorted(list(VALID_CHALLENGE_TYPES))}."
             )
         target_type = clean_type
+
+        # Validate requested difficulty level upfront if provided
+        if request.difficulty_level:
+            clean_req_diff = request.difficulty_level.strip().lower()
+            if clean_req_diff not in ("easy", "medium", "hard", "adaptive"):
+                raise InvalidDifficultyError(
+                    f"Invalid difficulty preference '{request.difficulty_level}'. Must be one of: ['adaptive', 'easy', 'hard', 'medium']."
+                )
 
         # Resolve difficulty via AdaptiveDecisionEngine (Phase 3.4)
         pref_to_use: str

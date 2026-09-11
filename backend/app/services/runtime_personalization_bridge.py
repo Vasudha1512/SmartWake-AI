@@ -286,14 +286,26 @@ class RuntimePersonalizationBridge:
             )
 
         if isinstance(explicit_context, dict):
-            # Strip all forbidden context keys and any identifier-like keys
+            # Strip all forbidden context keys and credential/security fields without false positives on legitimate words
             sanitized: Dict[str, Any] = {}
             for k, v in explicit_context.items():
                 k_lower = str(k).strip().lower()
                 if k_lower in FORBIDDEN_CONTEXT_KEYS:
                     continue
-                if any(bad in k_lower for bad in ("id", "user", "session", "alarm", "token", "auth")):
+                # Bounded pattern matching for credential, identity, and security fields
+                is_security_key = False
+                # Check identity and credential prefixes/suffixes
+                if any(k_lower == p or k_lower.startswith(f"{p}_") or k_lower.endswith(f"_{p}") or f"_{p}_" in k_lower
+                       for p in ("id", "user", "session", "alarm", "token", "auth", "secret", "cred", "pass", "password", "passphrase")):
+                    is_security_key = True
+                # Check bounded key patterns (avoids rejecting legitimate words like 'keyboard' or 'hockey')
+                if any(k_lower == p or k_lower.startswith(f"{p}_") or k_lower.endswith(f"_{p}") or f"_{p}_" in k_lower
+                       for p in ("key", "apikey", "api_key", "jwt", "bearer")):
+                    is_security_key = True
+
+                if is_security_key:
                     continue
+
                 sanitized[k] = v
 
             duration = sanitized.get("desired_duration_seconds")

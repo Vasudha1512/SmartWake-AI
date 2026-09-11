@@ -1,6 +1,8 @@
-"""SmartWake AI - FastAPI Backend Entrypoint."""
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.core.config import settings
 from backend.app.api.router import api_router
@@ -16,6 +18,25 @@ def get_application() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+
+    # Safe unhandled exception handler: prevents internal leakage while preserving HTTPExceptions and validation errors
+    @application.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        if isinstance(exc, (HTTPException, StarletteHTTPException)):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=getattr(exc, "headers", None),
+            )
+        if isinstance(exc, RequestValidationError):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error."},
+        )
 
     # CORS Middleware configuration
     application.add_middleware(

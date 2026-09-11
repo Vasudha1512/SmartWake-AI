@@ -375,6 +375,10 @@ def record_snooze(
         raise InvalidSnoozeDurationError(
             f"Invalid snooze duration '{duration_minutes}'. Duration must be a positive integer (> 0)."
         )
+    if dur > 1440:
+        raise InvalidSnoozeDurationError(
+            f"Invalid snooze duration '{duration_minutes}'. Duration cannot exceed 1440 minutes (24 hours)."
+        )
 
     session = db.get(WakeSession, session_id)
     if not session:
