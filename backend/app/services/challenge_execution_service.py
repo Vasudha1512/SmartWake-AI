@@ -11,7 +11,7 @@ ARCHITECTURAL RULES:
 5. Atomic transaction safety across WakeSession state updates and attempt tracking.
 """
 import json
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Union, cast
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,7 @@ from backend.app.models.alarm import Alarm
 from backend.app.models.challenge import Challenge
 from backend.app.models.challenge_attempt import ChallengeAttempt
 from backend.app.models.wake_session import WakeSession
+from backend.app.schemas.challenge_content_schemas import SafePersonalizationContext
 from backend.app.schemas.challenge_schemas import (
     ChallengeAttemptStartRequest,
     RuntimeChallengeGenerationRequest,
@@ -38,6 +39,10 @@ from backend.app.schemas.challenge_schemas import (
 from backend.app.services.adaptive_decision_engine import AdaptiveDecisionEngine
 from backend.app.services.challenge_generation_service import generate_challenge
 from backend.app.services.challenge_verification_service import verify_challenge
+from backend.app.services.runtime_personalization_bridge import (
+    RuntimePersonalizationBridge,
+    RuntimePersonalizationBundle,
+)
 from backend.app.services.wake_session_service import (
     STATUS_COMPLETED,
     STATUS_IN_CHALLENGE,
@@ -371,3 +376,27 @@ def list_attempts_for_wake_session(
         .order_by(ChallengeAttempt.attempt_number.asc())
     )
     return list(db.scalars(stmt).all())
+
+
+def prepare_runtime_personalization(
+    db: Session,
+    wake_session: WakeSession,
+    challenge_type: str,
+    difficulty_level: str,
+    current_attempt_number: int = 1,
+    explicit_context: Optional[Union[SafePersonalizationContext, Dict[str, Any]]] = None,
+) -> RuntimePersonalizationBundle:
+    """Prepare and extract the runtime personalization bundle for a wake session attempt.
+
+    Serves as the Phase 4.7-A integration bridge connecting live WakeSession and historical
+    DB records to the Phase 4.5 Challenge Personalization and Dispatching pipeline.
+    """
+    return RuntimePersonalizationBridge.build_runtime_profile(
+        db=db,
+        wake_session=wake_session,
+        challenge_type=challenge_type,
+        difficulty_level=difficulty_level,
+        current_attempt_number=current_attempt_number,
+        explicit_context=explicit_context,
+    )
+

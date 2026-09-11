@@ -82,6 +82,13 @@ from backend.app.services.model_inference_manager import (
 from backend.app.services.adaptive_decision_engine import (
     AdaptiveDecisionEngine,
 )
+from backend.app.services.runtime_personalization_bridge import (
+    RuntimeBridgeDifficultyError,
+    RuntimeBridgeError,
+    RuntimeBridgeTypeError,
+    RuntimePersonalizationBridge,
+    RuntimePersonalizationBundle,
+)
 
 __all__ = [
     "list_active_challenges",
@@ -143,5 +150,10 @@ __all__ = [
     "ModelCorruptError",
     "ModelMetadataError",
     "AdaptiveDecisionEngine",
+    "RuntimePersonalizationBridge",
+    "RuntimePersonalizationBundle",
+    "RuntimeBridgeError",
+    "RuntimeBridgeTypeError",
+    "RuntimeBridgeDifficultyError",
 ]
 
