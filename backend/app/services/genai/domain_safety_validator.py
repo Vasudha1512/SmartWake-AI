@@ -383,6 +383,8 @@ class DomainSafetyValidator:
         # 3. Extract items/sequence
         items = _extract_field(payload, "sequence")
         if items is None:
+            items = _extract_field(payload, "display_sequence")
+        if items is None:
             items = _extract_field(payload, "items")
         if items is None:
             items = _extract_field(payload, "pattern")

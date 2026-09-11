@@ -70,8 +70,8 @@ DETERMINISTIC_FALLBACK_CATALOG: Mapping[
             "difficulty_level": "easy",
             "title": "Morning Addition",
             "instructions": "Calculate the sum to dismiss your alarm.",
-            "content_payload": {"expression": "14 + 19", "operands": [14, 19], "operator": "+"},
-            "expected_answer": 33,
+            "content_payload": {"expression": "11 + 14", "operands": [11, 14], "operator": "+"},
+            "expected_answer": 25,
         },
     ),
     ("math", "medium"): FallbackCatalogEntry(
