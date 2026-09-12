@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  isNotificationSupported,
+} from '../../utils/alarmNotification';
 
 /**
  * AlarmSettings component
- * Controls alarm enabled toggle state and optional descriptive label.
+ * Controls alarm enabled toggle state, optional descriptive label,
+ * and browser desktop notification permissions.
  *
  * @param {{
  *   enabled: boolean,
@@ -17,6 +23,23 @@ export default function AlarmSettings({
   label,
   onChangeLabel,
 }) {
+  const [notificationPermission, setNotificationPermission] = useState(() =>
+    getNotificationPermission()
+  );
+  const [isRequestingNotification, setIsRequestingNotification] = useState(false);
+
+  const handleRequestNotification = async () => {
+    setIsRequestingNotification(true);
+    try {
+      const result = await requestNotificationPermission();
+      setNotificationPermission(result);
+    } finally {
+      setIsRequestingNotification(false);
+    }
+  };
+
+  const hasNotificationSupport = isNotificationSupported();
+
   return (
     <div className="space-y-6">
       {/* Alarm Enabled State Toggle */}
@@ -85,6 +108,69 @@ export default function AlarmSettings({
           )}
         </div>
       </div>
+
+      {/* Browser Notification Permission Control */}
+      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <span className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+              <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                />
+              </svg>
+              Browser Notifications
+            </span>
+            <p className="text-xs text-slate-600">
+              {notificationPermission === 'granted'
+                ? 'Desktop notifications will alert you if this tab is in the background.'
+                : notificationPermission === 'denied'
+                ? 'Notifications are blocked in your browser settings.'
+                : 'Receive a browser popup alert when your alarm rings in the background.'}
+            </p>
+          </div>
+
+          {/* Action / Status Badge */}
+          <div>
+            {!hasNotificationSupport ? (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                Unavailable
+              </span>
+            ) : notificationPermission === 'granted' ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+                Notifications Enabled
+              </span>
+            ) : notificationPermission === 'denied' ? (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                Permission Blocked
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRequestNotification}
+                disabled={isRequestingNotification}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-2xs transition-colors cursor-pointer"
+              >
+                {isRequestingNotification ? 'Requesting...' : 'Enable Notifications'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Informational help note if denied */}
+        {notificationPermission === 'denied' && (
+          <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-500 leading-relaxed">
+            To enable background alerts, open your browser site settings (click the lock/controls icon next to the address bar) and allow notifications for SmartWake AI.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+

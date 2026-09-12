@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { useAlarm } from '../context/AlarmContext';
 
 const navItems = [
   { name: 'Home', path: '/' },
@@ -11,6 +12,8 @@ const navItems = [
 
 export default function RootLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { alarm, isSoundPlaying, stopSound } = useAlarm();
+
 
   const getNavLinkClass = ({ isActive }) =>
     `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -130,6 +133,39 @@ export default function RootLayout() {
           </div>
         )}
       </header>
+ 
+      {/* Global Ringing Notification Banner */}
+      {alarm?.status === 'ringing' && (
+        <aside aria-label="Active Alarm Alert" className="bg-gradient-to-r from-rose-600 to-red-600 text-white px-4 py-2.5 shadow-md flex items-center justify-between text-xs sm:text-sm font-medium z-40 sticky top-16">
+          <div className="flex items-center gap-2.5 max-w-xl truncate">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+            </span>
+            <span className="truncate">
+              <strong>ALARM RINGING:</strong> {alarm.label || 'Scheduled Alarm'} ({alarm.time}) &mdash; Alertness challenge required!
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {isSoundPlaying && (
+              <button
+                type="button"
+                onClick={stopSound}
+                className="px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold backdrop-blur-xs transition-colors cursor-pointer"
+              >
+                Stop Audio
+              </button>
+            )}
+            <NavLink
+              to="/wake"
+              className="px-3 py-1 bg-white text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold transition-colors shadow-2xs"
+            >
+              Wake Screen &rarr;
+            </NavLink>
+          </div>
+        </aside>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">

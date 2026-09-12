@@ -4,6 +4,15 @@ import {
   isAlarmValid,
   isValidTimezone,
 } from '../utils/alarmScheduler';
+import {
+  startAlarmSound,
+  stopAlarmSound,
+  isAlarmSoundPlaying,
+} from '../utils/alarmAudio';
+import {
+  showAlarmNotification,
+  resetNotificationDeduplication,
+} from '../utils/alarmNotification';
 
 const STORAGE_KEY = 'smartwake_alarm_state_v1';
 
@@ -77,10 +86,12 @@ function persistAlarm(alarmState) {
 
 /**
  * AlarmProvider component
- * Hosts global alarm state, background scheduler ticker, and visibility change listener.
+ * Hosts global alarm state, background scheduler ticker, visibility change listener,
+ * programmatic Web Audio tone synthesizer, and browser notification integration.
  */
 export function AlarmProvider({ children }) {
   const [alarm, setAlarm] = useState(loadPersistedAlarm);
+  const [isSoundPlaying, setIsSoundPlaying] = useState(false);
   const alarmRef = useRef(alarm);
 
   // Keep ref synchronized to allow event listeners to read latest state without reattaching
@@ -89,10 +100,30 @@ export function AlarmProvider({ children }) {
     persistAlarm(alarm);
   }, [alarm]);
 
+  // Cleanup audio on component unmount
+  useEffect(() => {
+    return () => {
+      stopAlarmSound();
+    };
+  }, []);
+
+  /**
+   * Stops the active alarm audio while keeping the alarm status as ringing.
+   * Challenge verification remains required.
+   */
+  const stopSound = useCallback(() => {
+    stopAlarmSound();
+    setIsSoundPlaying(false);
+  }, []);
+
   /**
    * Arms an alarm configuration and calculates its next concrete occurrence.
    */
   const armAlarm = useCallback((alarmConfig) => {
+    stopAlarmSound();
+    setIsSoundPlaying(false);
+    resetNotificationDeduplication();
+
     const time = alarmConfig.time || '07:00';
     const selectedDays = Array.isArray(alarmConfig.selectedDays) ? alarmConfig.selectedDays : [];
     const timezone = isValidTimezone(alarmConfig.timezone)
@@ -123,6 +154,10 @@ export function AlarmProvider({ children }) {
    * Disarms the active alarm and resets state to idle.
    */
   const disarmAlarm = useCallback(() => {
+    stopAlarmSound();
+    setIsSoundPlaying(false);
+    resetNotificationDeduplication();
+
     setAlarm((prev) => {
       const updated = {
         ...prev,
@@ -140,6 +175,10 @@ export function AlarmProvider({ children }) {
    * For one-time alarms: transitions to idle.
    */
   const dismissAlarm = useCallback(() => {
+    stopAlarmSound();
+    setIsSoundPlaying(false);
+    resetNotificationDeduplication();
+
     setAlarm((prev) => {
       if (!prev) return DEFAULT_ALARM;
 
@@ -164,6 +203,26 @@ export function AlarmProvider({ children }) {
   }, []);
 
   /**
+   * Transition logic when scheduled alarm timestamp is reached.
+   */
+  const triggerAlarmRinging = useCallback((alarmToRing) => {
+    setAlarm((prev) => {
+      if (prev.status === 'ringing') return prev;
+      return {
+        ...prev,
+        status: 'ringing',
+      };
+    });
+
+    // Start alarm sound
+    startAlarmSound();
+    setIsSoundPlaying(isAlarmSoundPlaying());
+
+    // Dispatch native browser notification if permission has been granted
+    showAlarmNotification(alarmToRing);
+  }, []);
+
+  /**
    * Trigger check logic evaluating if current time reached the scheduled target.
    */
   const checkAlarmTrigger = useCallback(() => {
@@ -174,15 +233,15 @@ export function AlarmProvider({ children }) {
 
     const now = Date.now();
     if (now >= currentAlarm.nextOccurrenceMs) {
-      setAlarm((prev) => {
-        // Prevent duplicate trigger if already ringing
-        if (prev.status === 'ringing') return prev;
+      triggerAlarmRinging(currentAlarm);
+    }
+  }, [triggerAlarmRinging]);
 
-        return {
-          ...prev,
-          status: 'ringing',
-        };
-      });
+  // Initial mount check: if hydrated as ringing, attempt sound playback
+  useEffect(() => {
+    if (alarmRef.current?.status === 'ringing') {
+      startAlarmSound();
+      setIsSoundPlaying(isAlarmSoundPlaying());
     }
   }, []);
 
@@ -215,6 +274,9 @@ export function AlarmProvider({ children }) {
     disarmAlarm,
     dismissAlarm,
     checkAlarmTrigger,
+    stopSound,
+    stopAlarmSound: stopSound,
+    isSoundPlaying,
   };
 
   return <AlarmContext.Provider value={value}>{children}</AlarmContext.Provider>;
@@ -232,3 +294,4 @@ export function useAlarm() {
 }
 
 export default AlarmContext;
+

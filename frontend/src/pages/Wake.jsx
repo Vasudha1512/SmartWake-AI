@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useAlarm } from '../context/AlarmContext';
 import WakeHeader from '../components/wake/WakeHeader';
 import AlarmInfo from '../components/wake/AlarmInfo';
 import WakeStatus from '../components/wake/WakeStatus';
@@ -17,9 +18,17 @@ import SnoozeStatus from '../components/wake/SnoozeStatus';
 export default function Wake() {
   const location = useLocation();
   const navigate = useNavigate();
+  const {
+    alarm: activeAlarm,
+    stopSound,
+    isSoundPlaying,
+    dismissAlarm,
+  } = useAlarm();
 
-  const alarmDraft = location.state?.alarmDraft || null;
+  // Use route draft if available, or fall back to global active alarm
+  const alarmDraft = location.state?.alarmDraft || (activeAlarm?.status !== 'idle' ? activeAlarm : null);
   const challengeCategory = alarmDraft?.challengeCategory || 'math';
+  const isAlarmRinging = activeAlarm?.status === 'ringing';
 
   // Session state: 'ready' | 'in_progress' | 'completed' | 'failed'
   const [sessionStatus, setSessionStatus] = useState('ready');
@@ -73,6 +82,9 @@ export default function Wake() {
   };
 
   const handleChallengeComplete = () => {
+    // Stop active alarm sound and advance repeating alarm or disarm one-time alarm
+    stopSound();
+    dismissAlarm();
     setSessionStatus('completed');
   };
 
@@ -81,6 +93,7 @@ export default function Wake() {
   };
 
   const handleRestart = () => {
+    stopSound();
     setSessionStatus('ready');
     setSnoozeStatus('idle');
     setSnoozeCount(0);
@@ -105,6 +118,9 @@ export default function Wake() {
   };
 
   const handleConfirmSnooze = (duration) => {
+    // 0. Stop alarm audio on snooze
+    stopSound();
+
     // 1. Validate duration is exactly one of: 5, 10, 15
     const validDuration = [5, 10, 15].includes(duration) ? duration : 5;
 
@@ -158,8 +174,64 @@ export default function Wake() {
       {/* 3. Alarm Information Summary */}
       <AlarmInfo alarmDraft={alarmDraft} />
 
-      {/* 4. Session Status Lifecycle Bar */}
+      {/* 4. Active Alarm Ringing Alert & Audio Control */}
+      {isAlarmRinging && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-xs space-y-3 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="relative flex h-3 w-3 mt-1 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-600"></span>
+              </span>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-200">
+                    Alarm Ringing
+                  </span>
+                  <span className="text-sm font-bold text-slate-900">
+                    {activeAlarm?.label || alarmDraft?.label || 'Scheduled Alarm'} ({activeAlarm?.time || alarmDraft?.time || '07:00'})
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Audio alarm tone is active. You must complete your cognitive challenge below to verify alertness and finish this wake session.
+                </p>
+              </div>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-2">
+              {isSoundPlaying ? (
+                <button
+                  type="button"
+                  onClick={stopSound}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 shadow-xs transition-colors cursor-pointer"
+                >
+                  <svg className="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  </svg>
+                  Stop Alarm Sound
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-white border border-slate-200 shadow-2xs">
+                  <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  </svg>
+                  Sound Silenced
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-amber-800 bg-amber-100/70 px-3 py-2 rounded-xl border border-amber-200/80 font-medium">
+            Stopping the alarm audio does not bypass wake verification. The cognitive challenge is still active and required.
+          </div>
+        </div>
+      )}
+
+      {/* 5. Session Status Lifecycle Bar */}
       <WakeStatus status={snoozeStatus === 'snoozed' ? 'snoozed' : sessionStatus} />
+
 
       {/* 5. Main Interactive Session Viewport */}
       <main className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-xs min-h-[360px] flex flex-col justify-center">
