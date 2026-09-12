@@ -70,13 +70,8 @@ export default function RootLayout() {
               ))}
             </nav>
 
-            {/* Status Indicator & Mobile Menu Toggle */}
+            {/* Mobile Menu Toggle */}
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                Cognitive Engine Ready
-              </div>
-
               {/* Mobile hamburger button */}
               <button
                 type="button"

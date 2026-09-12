@@ -62,14 +62,31 @@ export default function AlarmInfo({ alarmDraft = null }) {
   const icon = CHALLENGE_ICONS[category] || '⚡';
   const challengeTitle = alarmDraft.challengeName || category.toUpperCase();
 
+  const formatDisplayTime = (timeStr) => {
+    if (!timeStr) return '07:00 AM';
+    if (!timeStr.includes(':')) return timeStr;
+    const [hoursStr, minutesStr] = timeStr.split(':');
+    const hours = parseInt(hoursStr, 10);
+    if (isNaN(hours)) return timeStr;
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+    const formattedHours = displayHours < 10 ? `0${displayHours}` : `${displayHours}`;
+    return `${formattedHours}:${minutesStr || '00'} ${period}`;
+  };
+
   return (
     <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
         <div className="space-y-1">
           <span className="text-slate-500 block">Triggered Alarm</span>
           <span className="text-base font-bold text-slate-900 font-mono block">
-            {alarmDraft.time || '07:00 AM'}
+            {formatDisplayTime(alarmDraft.time)}
           </span>
+          {alarmDraft.timezone && (
+            <span className="text-[11px] text-slate-500 font-medium block truncate">
+              {alarmDraft.timezone}
+            </span>
+          )}
         </div>
 
         <div className="space-y-1">

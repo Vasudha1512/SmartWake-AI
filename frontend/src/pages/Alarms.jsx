@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import AlarmForm from '../components/alarms/AlarmForm';
+import LiveClock from '../components/common/LiveClock';
 
 /**
  * Alarms Page
@@ -11,8 +12,8 @@ import AlarmForm from '../components/alarms/AlarmForm';
 export default function Alarms() {
   return (
     <div className="space-y-8 max-w-2xl mx-auto">
-      {/* 1. Page Header & Back Navigation */}
-      <header className="space-y-3">
+      {/* 1. Page Header, Live Current Clock & Back Navigation */}
+      <header className="space-y-4">
         <nav aria-label="Breadcrumb">
           <Link
             to="/dashboard"
@@ -25,14 +26,19 @@ export default function Alarms() {
           </Link>
         </nav>
 
-        <div className="border-b border-slate-200 pb-4">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-            Create Alarm
-          </h1>
-          <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-            Configure your wake-up time and schedule. Unlike traditional alarms, SmartWake AI requires
-            solving an adaptive cognitive challenge before ringing can be stopped.
-          </p>
+        <div className="border-b border-slate-200 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+              Create Alarm
+            </h1>
+            <p className="text-sm text-slate-600 mt-1 leading-relaxed max-w-md">
+              Configure your wake-up time and schedule. SmartWake AI requires solving an adaptive cognitive challenge to dismiss the alarm.
+            </p>
+          </div>
+
+          <div className="self-start sm:self-auto shrink-0">
+            <LiveClock />
+          </div>
         </div>
       </header>
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TimeSelector from './TimeSelector';
 import RepeatDaySelector from './RepeatDaySelector';
+import TimezoneSelector from './TimezoneSelector';
 import AlarmSettings from './AlarmSettings';
 import ChallengePreview from './ChallengePreview';
 
@@ -18,6 +19,13 @@ export default function AlarmForm() {
   const [selectedDays, setSelectedDays] = useState([]);
   const [enabled, setEnabled] = useState(true);
   const [label, setLabel] = useState('');
+  const [timezone, setTimezone] = useState(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  });
 
   // Validation state
   const [errors, setErrors] = useState({});
@@ -50,6 +58,7 @@ export default function AlarmForm() {
       isRecurring: selectedDays.length > 0,
       enabled,
       label: label.trim() || 'Morning Alarm',
+      timezone,
     };
 
     // Navigate to challenge selection with draft configuration
@@ -66,7 +75,7 @@ export default function AlarmForm() {
         </span>
       </div>
 
-      {/* 1. Time Input */}
+      {/* 1. 12-Hour Time Input */}
       <TimeSelector
         time={time}
         onChange={(newTime) => {
@@ -76,7 +85,7 @@ export default function AlarmForm() {
         error={errors.time}
       />
 
-      {/* 2. Repeat Days */}
+      {/* 2. Repeat Days with Quick Presets */}
       <RepeatDaySelector
         selectedDays={selectedDays}
         onChange={(days) => {
@@ -86,7 +95,13 @@ export default function AlarmForm() {
         error={errors.days}
       />
 
-      {/* 3. Settings: Toggle & Optional Label */}
+      {/* 3. Timezone Selector */}
+      <TimezoneSelector
+        value={timezone}
+        onChange={setTimezone}
+      />
+
+      {/* 4. Settings: Toggle & Optional Label */}
       <AlarmSettings
         enabled={enabled}
         onToggleEnabled={setEnabled}
@@ -94,7 +109,7 @@ export default function AlarmForm() {
         onChangeLabel={setLabel}
       />
 
-      {/* 4. Challenge Preview & Next Step CTA */}
+      {/* 5. Challenge Preview & Next Step CTA */}
       <ChallengePreview onContinue={handleContinue} isSubmitting={submittedValid} />
     </form>
   );

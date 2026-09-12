@@ -78,6 +78,11 @@ export default function AlarmSummary({ alarmDraft = null }) {
           <span className="text-sm font-bold text-slate-900 font-mono block">
             {displayTime}
           </span>
+          {alarmDraft?.timezone && (
+            <span className="text-[11px] text-slate-500 font-medium block truncate">
+              {alarmDraft.timezone}
+            </span>
+          )}
         </div>
 
         <div className="space-y-1">
