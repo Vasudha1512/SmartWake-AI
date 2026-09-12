@@ -59,9 +59,9 @@ export default function AlarmForm() {
   return (
     <form onSubmit={handleContinue} noValidate className="space-y-8">
       {/* Schedule Mode Banner */}
-      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
-        <span className="text-slate-400">Alarm Configuration</span>
-        <span className="font-semibold text-indigo-400 bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-800/50">
+      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+        <span className="text-slate-600">Alarm Configuration</span>
+        <span className="font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">
           {selectedDays.length === 0 ? 'One-time Ring' : 'Recurring Schedule'}
         </span>
       </div>

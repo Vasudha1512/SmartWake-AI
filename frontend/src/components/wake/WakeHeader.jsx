@@ -26,25 +26,25 @@ export default function WakeHeader() {
   }, []);
 
   return (
-    <header className="text-center space-y-3 pb-6 border-b border-slate-800/80">
-      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+    <header className="text-center space-y-3 pb-6 border-b border-slate-200">
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+        <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
         <span>Alarm Triggered &bull; Wake Session Active</span>
       </div>
 
       <div className="space-y-1">
-        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white">
+        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900">
           Wake Up!
         </h1>
-        <p className="text-sm text-slate-400 max-w-md mx-auto">
+        <p className="text-sm text-slate-600 max-w-md mx-auto">
           Complete your selected challenge to dismiss the alarm and verify cognitive alertness.
         </p>
       </div>
 
       {/* Live Digital Clock Display */}
       <div className="pt-2">
-        <div className="inline-block px-6 py-2.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner">
-          <span className="text-3xl sm:text-4xl font-mono font-bold tracking-wider text-white">
+        <div className="inline-block px-6 py-2.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+          <span className="text-3xl sm:text-4xl font-mono font-bold tracking-wider text-slate-900">
             {currentTime || '--:--:-- --'}
           </span>
         </div>

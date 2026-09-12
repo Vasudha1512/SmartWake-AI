@@ -64,10 +64,10 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
   return (
     <fieldset className="space-y-4">
       <div className="flex items-center justify-between">
-        <legend className="text-sm font-semibold text-white">
+        <legend className="text-sm font-semibold text-slate-900">
           Repeat Schedule
         </legend>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-slate-500">
           {selectedDays.length === 0
             ? 'One-time alarm (No repeat)'
             : isAllSelected
@@ -89,14 +89,14 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
               aria-label={day.label}
               className={`flex flex-col items-center justify-center py-3 px-1 rounded-xl text-xs font-semibold transition-all select-none focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                 isSelected
-                  ? 'bg-indigo-600 text-white border-2 border-indigo-400 shadow-md shadow-indigo-600/20'
-                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200 hover:bg-slate-800/80'
+                  ? 'bg-indigo-600 text-white border-2 border-indigo-500 shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border border-slate-200 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <span className="tracking-tight">{day.short}</span>
               <span className="mt-1">
                 {isSelected ? (
-                  <svg className="w-3.5 h-3.5 text-indigo-200" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-3.5 h-3.5 text-indigo-100" fill="currentColor" viewBox="0 0 20 20">
                     <path
                       fillRule="evenodd"
                       d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -104,7 +104,7 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
                     />
                   </svg>
                 ) : (
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-700 block"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300 block"></span>
                 )}
               </span>
             </button>
@@ -119,8 +119,8 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
           onClick={selectEveryDay}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             isAllSelected
-              ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-              : 'bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold'
+              : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 shadow-2xs'
           }`}
         >
           {isAllSelected ? 'Deselect All' : 'Every day'}
@@ -131,8 +131,8 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
           onClick={selectWeekdays}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             isWeekdaysSelected
-              ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-              : 'bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold'
+              : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 shadow-2xs'
           }`}
         >
           Weekdays
@@ -143,8 +143,8 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
           onClick={selectWeekends}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             isWeekendSelected
-              ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-              : 'bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold'
+              : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 shadow-2xs'
           }`}
         >
           Weekends
@@ -154,7 +154,7 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
           <button
             type="button"
             onClick={clearSelection}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-300 transition-colors ml-auto"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-rose-600 transition-colors ml-auto"
           >
             Clear
           </button>
@@ -162,7 +162,7 @@ export default function RepeatDaySelector({ selectedDays = [], onChange, error }
       </div>
 
       {error && (
-        <p role="alert" className="text-xs font-medium text-rose-400 flex items-center gap-1.5">
+        <p role="alert" className="text-xs font-medium text-rose-600 flex items-center gap-1.5">
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
             <path d="M12 8v4m0 4h.01" strokeWidth="2" strokeLinecap="round"></path>

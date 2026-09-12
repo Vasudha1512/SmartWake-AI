@@ -74,19 +74,19 @@ export default function MemoryChallenge({ onComplete, onFail }) {
     <div className="space-y-6 max-w-md mx-auto text-center">
       {/* Instructions */}
       <div className="space-y-1">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <span>🧠 Visual Memory Challenge</span>
         </div>
-        <h3 className="text-xl font-bold text-white tracking-tight">
+        <h3 className="text-xl font-bold text-slate-900 tracking-tight">
           Repeat the Sequence
         </h3>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600">
           Watch the pads illuminate, then tap them in the exact order shown.
         </p>
       </div>
 
       {/* Memory Pads Grid */}
-      <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-inner">
+      <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 shadow-xs">
         <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
           {PADS.map((pad) => {
             const isHighlighted = activePad === pad.id;
@@ -97,9 +97,9 @@ export default function MemoryChallenge({ onComplete, onFail }) {
                 disabled={phase !== 'recalling'}
                 onClick={() => handlePadClick(pad.id)}
                 aria-label={pad.label}
-                className={`h-24 sm:h-28 rounded-2xl transition-all duration-150 flex items-center justify-center text-white font-bold text-xl shadow-lg focus:outline-none ${
+                className={`h-24 sm:h-28 rounded-2xl transition-all duration-150 flex items-center justify-center text-white font-bold text-xl shadow-md focus:outline-none ${
                   isHighlighted
-                    ? pad.activeColor + ' scale-105 shadow-2xl'
+                    ? pad.activeColor + ' scale-105 shadow-xl'
                     : pad.color + ' hover:opacity-90 active:scale-95'
                 } ${phase !== 'recalling' ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
               >
@@ -110,11 +110,11 @@ export default function MemoryChallenge({ onComplete, onFail }) {
         </div>
 
         {/* Phase Status */}
-        <div className="mt-4 text-xs font-medium text-slate-400">
+        <div className="mt-4 text-xs font-medium text-slate-600">
           {phase === 'ready' && 'Press "Show Sequence" to begin.'}
           {phase === 'showing' && 'Watch carefully...'}
           {phase === 'recalling' && (
-            <span className="text-emerald-400">
+            <span className="text-emerald-700 font-semibold">
               Your turn! Tap the pads ({userSequence.length}/{DEMO_SEQUENCE.length})
             </span>
           )}
@@ -123,8 +123,8 @@ export default function MemoryChallenge({ onComplete, onFail }) {
 
       {/* Error / Failure Banner */}
       {error && (
-        <div role="alert" className="p-3 rounded-xl bg-rose-950/40 border border-rose-900/60 text-xs text-rose-300 flex items-center justify-center gap-2">
-          <svg className="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center justify-center gap-2">
+          <svg className="w-4 h-4 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
             <path d="M12 8v4m0 4h.01" strokeWidth="2" strokeLinecap="round"></path>
           </svg>
@@ -138,14 +138,14 @@ export default function MemoryChallenge({ onComplete, onFail }) {
           <button
             type="button"
             onClick={startSequence}
-            className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             Show Sequence (4 steps)
           </button>
         )}
 
         {phase === 'showing' && (
-          <div className="w-full py-3 rounded-xl text-sm font-semibold text-slate-400 bg-slate-900 border border-slate-800 animate-pulse">
+          <div className="w-full py-3 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 animate-pulse">
             Displaying Sequence...
           </div>
         )}
@@ -157,7 +157,7 @@ export default function MemoryChallenge({ onComplete, onFail }) {
               setPhase('ready');
               setUserSequence([]);
             }}
-            className="text-xs text-slate-400 hover:text-white transition-colors"
+            className="text-xs text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
           >
             Restart Sequence
           </button>
@@ -165,7 +165,7 @@ export default function MemoryChallenge({ onComplete, onFail }) {
       </div>
 
       {/* Disclaimer */}
-      <p className="text-[11px] text-slate-400">
+      <p className="text-[11px] text-slate-500">
         Deterministic demo sequence. Adaptive sequence lengths calibrate via ML in Phase 6.
       </p>
     </div>

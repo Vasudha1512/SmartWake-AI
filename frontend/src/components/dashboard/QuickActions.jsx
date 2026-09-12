@@ -14,11 +14,11 @@ export default function QuickActions() {
       path: '/alarms',
       ctaText: 'Open Alarms',
       icon: (
-        <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
         </svg>
       ),
-      accentColor: 'group-hover:border-indigo-500/50 group-hover:bg-indigo-950/20',
+      accentColor: 'hover:border-indigo-300 hover:bg-indigo-50/40',
     },
     {
       id: 'wake-session',
@@ -27,11 +27,11 @@ export default function QuickActions() {
       path: '/wake',
       ctaText: 'Launch Wake UI',
       icon: (
-        <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       ),
-      accentColor: 'group-hover:border-amber-500/50 group-hover:bg-amber-950/20',
+      accentColor: 'hover:border-amber-300 hover:bg-amber-50/40',
     },
     {
       id: 'view-history',
@@ -40,18 +40,18 @@ export default function QuickActions() {
       path: '/history',
       ctaText: 'Explore Logs',
       icon: (
-        <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
       ),
-      accentColor: 'group-hover:border-purple-500/50 group-hover:bg-purple-950/20',
+      accentColor: 'hover:border-purple-300 hover:bg-purple-50/40',
     },
   ];
 
   return (
     <section aria-labelledby="quick-actions-heading" className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 id="quick-actions-heading" className="text-base font-semibold text-white">
+        <h2 id="quick-actions-heading" className="text-base font-semibold text-slate-900">
           Quick Actions
         </h2>
         <span className="text-xs text-slate-500">Navigation shortcuts</span>
@@ -62,23 +62,23 @@ export default function QuickActions() {
           <Link
             key={action.id}
             to={action.path}
-            className={`group p-5 rounded-2xl bg-slate-900/60 border border-slate-800 transition-all duration-200 flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg ${action.accentColor}`}
+            className={`group p-5 rounded-2xl bg-white border border-slate-200 transition-all duration-200 flex flex-col justify-between hover:scale-[1.01] hover:shadow-md ${action.accentColor}`}
           >
             <div className="space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shadow-2xs">
                 {action.icon}
               </div>
-              <h3 className="text-sm font-semibold text-white group-hover:text-indigo-300 transition-colors">
+              <h3 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
                 {action.title}
               </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-slate-600 leading-relaxed">
                 {action.description}
               </p>
             </div>
 
-            <div className="pt-4 mt-2 border-t border-slate-800/80 flex items-center justify-between text-xs font-medium text-slate-300 group-hover:text-white">
+            <div className="pt-4 mt-2 border-t border-slate-200 flex items-center justify-between text-xs font-medium text-slate-700 group-hover:text-slate-900">
               <span>{action.ctaText}</span>
-              <span className="transform group-hover:translate-x-1 transition-transform">&rarr;</span>
+              <span className="transform group-hover:translate-x-1 transition-transform text-slate-400 group-hover:text-slate-700">&rarr;</span>
             </div>
           </Link>
         ))}

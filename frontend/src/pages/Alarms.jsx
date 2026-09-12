@@ -16,7 +16,7 @@ export default function Alarms() {
         <nav aria-label="Breadcrumb">
           <Link
             to="/dashboard"
-            className="inline-flex items-center text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+            className="inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
           >
             <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -25,11 +25,11 @@ export default function Alarms() {
           </Link>
         </nav>
 
-        <div className="border-b border-slate-800/80 pb-4">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+        <div className="border-b border-slate-200 pb-4">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
             Create Alarm
           </h1>
-          <p className="text-sm text-slate-400 mt-1 leading-relaxed">
+          <p className="text-sm text-slate-600 mt-1 leading-relaxed">
             Configure your wake-up time and schedule. Unlike traditional alarms, SmartWake AI requires
             solving an adaptive cognitive challenge before ringing can be stopped.
           </p>
@@ -37,7 +37,7 @@ export default function Alarms() {
       </header>
 
       {/* 2. Main Alarm Creation Form Container */}
-      <main className="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 sm:p-8 shadow-xl">
+      <main className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-xs">
         <AlarmForm />
       </main>
     </div>

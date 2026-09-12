@@ -56,17 +56,17 @@ export default function AlarmSummary({ alarmDraft = null }) {
   const displayLabel = alarmDraft?.label?.trim() ? alarmDraft.label : 'Not specified';
 
   return (
-    <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-md">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+    <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-3">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+          <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
             Alarm Draft Summary
           </h2>
         </div>
         <Link
           to="/alarms"
-          className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
         >
           Edit Alarm &rarr;
         </Link>
@@ -74,22 +74,22 @@ export default function AlarmSummary({ alarmDraft = null }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
         <div className="space-y-1">
-          <span className="text-slate-400 block">Wake Time</span>
-          <span className="text-sm font-bold text-white font-mono block">
+          <span className="text-slate-500 block">Wake Time</span>
+          <span className="text-sm font-bold text-slate-900 font-mono block">
             {displayTime}
           </span>
         </div>
 
         <div className="space-y-1">
-          <span className="text-slate-400 block">Schedule</span>
-          <span className="text-sm font-medium text-slate-200 block truncate">
+          <span className="text-slate-500 block">Schedule</span>
+          <span className="text-sm font-medium text-slate-700 block truncate">
             {displaySchedule}
           </span>
         </div>
 
         <div className="space-y-1">
-          <span className="text-slate-400 block">Label</span>
-          <span className="text-sm font-medium text-slate-200 block truncate">
+          <span className="text-slate-500 block">Label</span>
+          <span className="text-sm font-medium text-slate-700 block truncate">
             {displayLabel}
           </span>
         </div>
