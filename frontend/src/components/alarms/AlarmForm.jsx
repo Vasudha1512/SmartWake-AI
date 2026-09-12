@@ -52,7 +52,7 @@ export default function AlarmForm() {
       label: label.trim() || 'Morning Alarm',
     };
 
-    // Navigate to challenge placeholder with draft configuration
+    // Navigate to challenge selection with draft configuration
     navigate('/challenge', { state: { alarmDraft } });
   };
 

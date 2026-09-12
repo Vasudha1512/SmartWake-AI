@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const PADS = [
   { id: 1, label: 'Pad 1', color: 'bg-indigo-600', activeColor: 'bg-indigo-400 ring-4 ring-indigo-300' },
@@ -24,27 +24,45 @@ export default function MemoryChallenge({ onComplete, onFail }) {
   const [userSequence, setUserSequence] = useState([]);
   const [error, setError] = useState(null);
 
+  const timeoutsRef = useRef([]);
+
+  const clearAllTimeouts = () => {
+    timeoutsRef.current.forEach((id) => clearTimeout(id));
+    timeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => {
+      clearAllTimeouts();
+    };
+  }, []);
+
   const startSequence = () => {
+    clearAllTimeouts();
     setPhase('showing');
     setError(null);
     setUserSequence([]);
 
     // Sequentially highlight the pads
     DEMO_SEQUENCE.forEach((padId, index) => {
-      setTimeout(() => {
+      const t1 = setTimeout(() => {
         setActivePad(padId);
       }, (index + 1) * 700);
 
-      setTimeout(() => {
+      const t2 = setTimeout(() => {
         setActivePad(null);
       }, (index + 1) * 700 + 450);
+
+      timeoutsRef.current.push(t1, t2);
     });
 
     // Switch to recall phase after sequence displays
-    setTimeout(() => {
+    const tEnd = setTimeout(() => {
       setActivePad(null);
       setPhase('recalling');
     }, (DEMO_SEQUENCE.length + 1) * 700);
+
+    timeoutsRef.current.push(tEnd);
   };
 
   const handlePadClick = (padId) => {
@@ -154,6 +172,8 @@ export default function MemoryChallenge({ onComplete, onFail }) {
           <button
             type="button"
             onClick={() => {
+              clearAllTimeouts();
+              setActivePad(null);
               setPhase('ready');
               setUserSequence([]);
             }}

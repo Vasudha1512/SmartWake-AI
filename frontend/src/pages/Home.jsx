@@ -8,7 +8,7 @@ export default function Home() {
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/40 border border-slate-200 p-8 sm:p-12 shadow-sm">
         <div className="max-w-3xl space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <span>Phase 5 &mdash; Frontend Foundation</span>
+            <span>SmartWake AI &bull; Cognitive Wake Platform</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
@@ -29,13 +29,13 @@ export default function Home() {
               to="/dashboard"
               className="inline-flex items-center justify-center px-5 py-3 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all"
             >
-              Open Dashboard Placeholder &rarr;
+              Open Dashboard &rarr;
             </Link>
             <Link
               to="/alarms"
               className="inline-flex items-center justify-center px-5 py-3 rounded-xl font-semibold text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-xs transition-all"
             >
-              View Alarms Route
+              Set an Alarm
             </Link>
           </div>
         </div>
