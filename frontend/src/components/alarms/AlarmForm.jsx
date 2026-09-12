@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAlarm } from '../../context/AlarmContext';
 import TimeSelector from './TimeSelector';
 import RepeatDaySelector from './RepeatDaySelector';
 import TimezoneSelector from './TimezoneSelector';
@@ -10,16 +11,20 @@ import ChallengePreview from './ChallengePreview';
  * AlarmForm component
  * Manages alarm creation form state, client-side validation, and navigation
  * to the upcoming Challenge Selection step.
+ *
+ * Registers and arms the alarm in global AlarmContext.
  */
 export default function AlarmForm() {
   const navigate = useNavigate();
+  const { alarm: activeAlarm, armAlarm } = useAlarm();
 
-  // Form state
-  const [time, setTime] = useState('07:00');
-  const [selectedDays, setSelectedDays] = useState([]);
-  const [enabled, setEnabled] = useState(true);
-  const [label, setLabel] = useState('');
+  // Form state, initialized from existing active alarm if present
+  const [time, setTime] = useState(activeAlarm?.time || '07:00');
+  const [selectedDays, setSelectedDays] = useState(activeAlarm?.selectedDays || []);
+  const [enabled, setEnabled] = useState(activeAlarm?.enabled !== false);
+  const [label, setLabel] = useState(activeAlarm?.label || '');
   const [timezone, setTimezone] = useState(() => {
+    if (activeAlarm?.timezone) return activeAlarm.timezone;
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     } catch {
@@ -61,7 +66,10 @@ export default function AlarmForm() {
       timezone,
     };
 
-    // Navigate to challenge selection with draft configuration
+    // 1. Arm the alarm globally in AlarmContext
+    armAlarm(alarmDraft);
+
+    // 2. Preserve the existing navigation flow to Challenge Selection
     navigate('/challenge', { state: { alarmDraft } });
   };
 
