@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useAlarm } from '../context/AlarmContext';
 import AlarmSummary from '../components/challenges/AlarmSummary';
 import ChallengeGrid, { CHALLENGES } from '../components/challenges/ChallengeGrid';
 
@@ -12,6 +13,7 @@ import ChallengeGrid, { CHALLENGES } from '../components/challenges/ChallengeGri
 export default function Challenge() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { updateAlarmChallenge } = useAlarm();
 
   const alarmDraft = location.state?.alarmDraft || null;
   const [selectedChallengeId, setSelectedChallengeId] = useState(null);
@@ -22,6 +24,9 @@ export default function Challenge() {
   const handleContinue = () => {
     if (!selectedChallengeId) return;
 
+    // Update authoritative challenge in global AlarmContext
+    updateAlarmChallenge(selectedChallengeId, selectedChallenge?.name);
+
     const completeDraft = {
       ...alarmDraft,
       challengeCategory: selectedChallengeId,
@@ -31,6 +36,7 @@ export default function Challenge() {
     // Navigate to next stage (Wake Screen)
     navigate('/wake', { state: { alarmDraft: completeDraft } });
   };
+
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">

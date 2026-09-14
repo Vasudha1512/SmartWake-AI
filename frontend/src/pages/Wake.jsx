@@ -23,65 +23,81 @@ export default function Wake() {
     stopSound,
     isSoundPlaying,
     dismissAlarm,
+    snoozeAlarm,
+    fastForwardSnooze,
   } = useAlarm();
 
-  // Use route draft if available, or fall back to global active alarm
-  const alarmDraft = location.state?.alarmDraft || (activeAlarm?.status !== 'idle' ? activeAlarm : null);
-  const challengeCategory = alarmDraft?.challengeCategory || 'math';
+  // Authoritative alarm data: prioritize activeAlarm from AlarmContext, fall back to route draft
+  const alarmDraft = activeAlarm?.status !== 'idle' ? activeAlarm : location.state?.alarmDraft || null;
+  const challengeCategory = activeAlarm?.challengeCategory || location.state?.alarmDraft?.challengeCategory || 'math';
   const isAlarmRinging = activeAlarm?.status === 'ringing';
 
   // Session state: 'ready' | 'in_progress' | 'completed' | 'failed'
   const [sessionStatus, setSessionStatus] = useState('ready');
 
-  // Local Snooze state
-  const [snoozeCount, setSnoozeCount] = useState(0);
-  const [snoozeDuration, setSnoozeDuration] = useState(null);
-  const [snoozeStatus, setSnoozeStatus] = useState('idle'); // 'idle' | 'selecting' | 'snoozed' | 'finished'
-  const [selectedDuration, setSelectedDuration] = useState(5);
-  const [snoozeRemainingSeconds, setSnoozeRemainingSeconds] = useState(0);
+  // Completed session snooze snapshot (persisted locally so summary displays correctly after dismissal)
+  const [completedSnoozeSummary, setCompletedSnoozeSummary] = useState(null);
 
-  // Target deadline timestamp ref for drift-free countdown
-  const snoozeEndsAtRef = useRef(null);
+  // Snooze UI selector state
+  const [isSelectingSnooze, setIsSelectingSnooze] = useState(false);
+  const [selectedDuration, setSelectedDuration] = useState(activeAlarm?.snoozeDuration || 5);
 
-  // Deadline/timestamp-based countdown effect
+  // Check if alarm is actively snoozed based on absolute deadline in activeAlarm
+  const isActivelySnoozed = Boolean(
+    activeAlarm?.snoozeEndsAt &&
+    activeAlarm?.status === 'armed' &&
+    Date.now() < activeAlarm.snoozeEndsAt
+  );
+
+  const [snoozeRemainingSeconds, setSnoozeRemainingSeconds] = useState(() => {
+    if (!activeAlarm?.snoozeEndsAt) return 0;
+    return Math.max(0, Math.ceil((activeAlarm.snoozeEndsAt - Date.now()) / 1000));
+  });
+
+  // Source-of-truth timestamp countdown effect (immune to interval drift)
   useEffect(() => {
-    if (snoozeStatus !== 'snoozed') {
+    if (!isActivelySnoozed || !activeAlarm?.snoozeEndsAt) {
+      setSnoozeRemainingSeconds(0);
       return;
     }
 
     const updateCountdown = () => {
-      if (!snoozeEndsAtRef.current) {
-        return;
-      }
-
-      const remainingMs = snoozeEndsAtRef.current - Date.now();
-      const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-
-      setSnoozeRemainingSeconds(remainingSeconds);
-
-      if (remainingMs <= 0) {
-        snoozeEndsAtRef.current = null;
-        setSnoozeRemainingSeconds(0);
-        setSnoozeStatus('finished');
-      }
+      const remainingMs = activeAlarm.snoozeEndsAt - Date.now();
+      const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+      setSnoozeRemainingSeconds(remainingSec);
     };
 
-    // Calculate immediately on mount/entering snoozed state
     updateCountdown();
-
-    // Refresh display every second
     const intervalId = setInterval(updateCountdown, 1000);
 
     return () => {
       clearInterval(intervalId);
     };
-  }, [snoozeStatus]);
+  }, [isActivelySnoozed, activeAlarm?.snoozeEndsAt]);
+
+  const currentSnoozeCount = activeAlarm?.snoozeCount || 0;
+  const currentSnoozeDuration = activeAlarm?.snoozeDuration || selectedDuration;
+
+  // Derive consolidated snoozeStatus for child views
+  const snoozeStatus = isSelectingSnooze
+    ? 'selecting'
+    : isActivelySnoozed
+    ? 'snoozed'
+    : isAlarmRinging && currentSnoozeCount > 0
+    ? 'finished'
+    : 'idle';
 
   const handleStartChallenge = () => {
     setSessionStatus('in_progress');
   };
 
   const handleChallengeComplete = () => {
+    // Preserve snapshot of snoozes for the session summary view before dismissal resets it
+    setCompletedSnoozeSummary({
+      snoozeCount: activeAlarm?.snoozeCount || 0,
+      snoozeDuration: activeAlarm?.snoozeDuration || null,
+    });
+
     // Stop active alarm sound and advance repeating alarm or disarm one-time alarm
     stopSound();
     dismissAlarm();
@@ -95,12 +111,8 @@ export default function Wake() {
   const handleRestart = () => {
     stopSound();
     setSessionStatus('ready');
-    setSnoozeStatus('idle');
-    setSnoozeCount(0);
-    setSnoozeDuration(null);
-    setSnoozeRemainingSeconds(0);
-    setSelectedDuration(5);
-    snoozeEndsAtRef.current = null;
+    setIsSelectingSnooze(false);
+    setCompletedSnoozeSummary(null);
   };
 
   const handleBackToChallenge = () => {
@@ -109,44 +121,34 @@ export default function Wake() {
 
   // Snooze Flow Handlers
   const handleOpenSnoozeSelector = () => {
-    setSnoozeStatus('selecting');
+    setIsSelectingSnooze(true);
   };
 
   const handleCancelSnooze = () => {
-    // Cancel: close selector, do not increment count, do not start countdown
-    setSnoozeStatus(snoozeCount > 0 ? 'finished' : 'idle');
+    setIsSelectingSnooze(false);
   };
 
   const handleConfirmSnooze = (duration) => {
-    // 0. Stop alarm audio on snooze
-    stopSound();
-
-    // 1. Validate duration is exactly one of: 5, 10, 15
     const validDuration = [5, 10, 15].includes(duration) ? duration : 5;
-
-    // 2. Increment snoozeCount by exactly 1
-    setSnoozeCount((prev) => prev + 1);
-
-    // 3. Save latest snoozeDuration
-    setSnoozeDuration(validDuration);
     setSelectedDuration(validDuration);
-
-    // 4. Calculate target deadline timestamp
-    const endsAt = Date.now() + validDuration * 60 * 1000;
-    snoozeEndsAtRef.current = endsAt;
-
-    // 5. Initialize remaining seconds
-    setSnoozeRemainingSeconds(validDuration * 60);
-
-    // 6. Set status to "snoozed"
-    setSnoozeStatus('snoozed');
+    // Delegate snooze lifecycle to global AlarmContext
+    snoozeAlarm(validDuration);
+    setIsSelectingSnooze(false);
   };
 
   const handleFastForwardDemo = () => {
-    snoozeEndsAtRef.current = null;
-    setSnoozeRemainingSeconds(0);
-    setSnoozeStatus('finished');
+    // Delegate immediate snooze expiration to global AlarmContext
+    fastForwardSnooze();
   };
+
+  const displaySnoozeCount = sessionStatus === 'completed'
+    ? (completedSnoozeSummary?.snoozeCount ?? currentSnoozeCount)
+    : currentSnoozeCount;
+
+  const displaySnoozeDuration = sessionStatus === 'completed'
+    ? (completedSnoozeSummary?.snoozeDuration ?? currentSnoozeDuration)
+    : currentSnoozeDuration;
+
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
@@ -249,8 +251,8 @@ export default function Wake() {
         {snoozeStatus === 'snoozed' && (
           <SnoozeStatus
             mode="active_card"
-            snoozeCount={snoozeCount}
-            snoozeDuration={snoozeDuration}
+            snoozeCount={currentSnoozeCount}
+            snoozeDuration={currentSnoozeDuration}
             snoozeStatus={snoozeStatus}
             remainingSeconds={snoozeRemainingSeconds}
             onFastForwardDemo={handleFastForwardDemo}
@@ -264,8 +266,8 @@ export default function Wake() {
             {snoozeStatus === 'finished' && (
               <SnoozeStatus
                 mode="banner"
-                snoozeCount={snoozeCount}
-                snoozeDuration={snoozeDuration}
+                snoozeCount={currentSnoozeCount}
+                snoozeDuration={currentSnoozeDuration}
                 snoozeStatus={snoozeStatus}
               />
             )}
@@ -312,8 +314,8 @@ export default function Wake() {
               <div className="pt-1 flex items-center justify-center">
                 <SnoozeStatus
                   mode="badge"
-                  snoozeCount={snoozeCount}
-                  snoozeDuration={snoozeDuration}
+                  snoozeCount={currentSnoozeCount}
+                  snoozeDuration={currentSnoozeDuration}
                 />
               </div>
 
@@ -332,8 +334,8 @@ export default function Wake() {
               <span className="text-slate-600 font-medium">Session Context:</span>
               <SnoozeStatus
                 mode="badge"
-                snoozeCount={snoozeCount}
-                snoozeDuration={snoozeDuration}
+                snoozeCount={currentSnoozeCount}
+                snoozeDuration={currentSnoozeDuration}
               />
             </div>
 
@@ -372,9 +374,9 @@ export default function Wake() {
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Snoozes this session:</span>
                 <span className="font-semibold text-slate-900">
-                  {snoozeCount === 0
+                  {displaySnoozeCount === 0
                     ? '0 (No snoozes used)'
-                    : `${snoozeCount} time${snoozeCount > 1 ? 's' : ''}${snoozeDuration ? ` (latest: ${snoozeDuration}m)` : ''}`}
+                    : `${displaySnoozeCount} time${displaySnoozeCount > 1 ? 's' : ''}${displaySnoozeDuration ? ` (latest: ${displaySnoozeDuration}m)` : ''}`}
                 </span>
               </div>
               <div className="flex items-center justify-between">

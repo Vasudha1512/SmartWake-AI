@@ -27,6 +27,11 @@ const DEFAULT_ALARM = {
   enabled: false,
   status: 'idle', // 'idle' | 'armed' | 'ringing'
   nextOccurrenceMs: null,
+  challengeCategory: 'math',
+  challengeName: 'Quick Math',
+  snoozeCount: 0,
+  snoozeDuration: null,
+  snoozeEndsAt: null,
 };
 
 /**
@@ -52,6 +57,7 @@ function loadPersistedAlarm() {
         return {
           ...parsed,
           status: 'ringing',
+          snoozeEndsAt: null,
         };
       }
     }
@@ -87,7 +93,7 @@ function persistAlarm(alarmState) {
 /**
  * AlarmProvider component
  * Hosts global alarm state, background scheduler ticker, visibility change listener,
- * programmatic Web Audio tone synthesizer, and browser notification integration.
+ * programmatic Web Audio tone synthesizer, browser notifications, and complete snooze lifecycle.
  */
 export function AlarmProvider({ children }) {
   const [alarm, setAlarm] = useState(loadPersistedAlarm);
@@ -108,8 +114,8 @@ export function AlarmProvider({ children }) {
   }, []);
 
   /**
-   * Stops the active alarm audio while keeping the alarm status as ringing.
-   * Challenge verification remains required.
+   * Stops only the audio playback while keeping the alarm status as ringing.
+   * Cognitive challenge verification remains active and required.
    */
   const stopSound = useCallback(() => {
     stopAlarmSound();
@@ -131,6 +137,8 @@ export function AlarmProvider({ children }) {
       : Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const label = (alarmConfig.label || 'Morning Alarm').trim();
     const enabled = alarmConfig.enabled !== false;
+    const challengeCategory = alarmConfig.challengeCategory || 'math';
+    const challengeName = alarmConfig.challengeName || 'Quick Math';
 
     const newAlarm = {
       id: `alarm_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
@@ -141,6 +149,11 @@ export function AlarmProvider({ children }) {
       enabled,
       status: 'armed',
       nextOccurrenceMs: null,
+      challengeCategory,
+      challengeName,
+      snoozeCount: 0,
+      snoozeDuration: null,
+      snoozeEndsAt: null,
     };
 
     const nextOccurrenceMs = calculateNextOccurrence(newAlarm, Date.now());
@@ -151,7 +164,75 @@ export function AlarmProvider({ children }) {
   }, []);
 
   /**
-   * Disarms the active alarm and resets state to idle.
+   * Updates the selected challenge category on the active armed alarm.
+   */
+  const updateAlarmChallenge = useCallback((challengeCategory, challengeName) => {
+    setAlarm((prev) => {
+      if (!prev || prev.status === 'idle') return prev;
+      return {
+        ...prev,
+        challengeCategory: challengeCategory || prev.challengeCategory || 'math',
+        challengeName: challengeName || prev.challengeName || 'Quick Math',
+      };
+    });
+  }, []);
+
+  /**
+   * Snoozes the ringing alarm for durationMinutes (5, 10, or 15 minutes).
+   * Stops sound, increments snoozeCount, calculates target deadline timestamp,
+   * transitions status from ringing to armed, and stores snooze metadata.
+   *
+   * @param {number} durationMinutes
+   * @returns {number} The target timestamp when snooze expires.
+   */
+  const snoozeAlarm = useCallback((durationMinutes) => {
+    const validDuration = [5, 10, 15].includes(durationMinutes) ? durationMinutes : 5;
+
+    // 1. Stop active alarm sound
+    stopAlarmSound();
+    setIsSoundPlaying(false);
+
+    // 2. Calculate next target timestamp using an absolute deadline
+    const now = Date.now();
+    const snoozeEndsAt = now + validDuration * 60 * 1000;
+
+    // 3. Update alarm state: armed with nextOccurrenceMs = snoozeEndsAt
+    setAlarm((prev) => {
+      if (!prev) return DEFAULT_ALARM;
+      const newSnoozeCount = (prev.snoozeCount || 0) + 1;
+      return {
+        ...prev,
+        status: 'armed',
+        nextOccurrenceMs: snoozeEndsAt,
+        snoozeEndsAt,
+        snoozeDuration: validDuration,
+        snoozeCount: newSnoozeCount,
+      };
+    });
+
+    return snoozeEndsAt;
+  }, []);
+
+  /**
+   * Fast forwards the active snooze countdown for immediate demo or testing.
+   */
+  const fastForwardSnooze = useCallback(() => {
+    const current = alarmRef.current;
+    if (!current || !current.snoozeEndsAt) return;
+
+    const expiredAlarm = {
+      ...current,
+      status: 'ringing',
+      snoozeEndsAt: null,
+    };
+    setAlarm(expiredAlarm);
+    startAlarmSound();
+    setIsSoundPlaying(isAlarmSoundPlaying());
+    showAlarmNotification(expiredAlarm);
+  }, []);
+
+  /**
+   * Disarms the scheduled alarm, resetting state to idle.
    */
   const disarmAlarm = useCallback(() => {
     stopAlarmSound();
@@ -164,15 +245,18 @@ export function AlarmProvider({ children }) {
         enabled: false,
         status: 'idle',
         nextOccurrenceMs: null,
+        snoozeCount: 0,
+        snoozeDuration: null,
+        snoozeEndsAt: null,
       };
       return updated;
     });
   }, []);
 
   /**
-   * Dismisses the active ringing alarm.
-   * For repeating alarms: calculates next valid occurrence.
-   * For one-time alarms: transitions to idle.
+   * Dismisses the active ringing alarm (e.g. upon successful cognitive challenge completion).
+   * For repeating alarms: calculates next valid occurrence and preserves repeating schedule.
+   * For one-time alarms: transitions to idle and disables alarm.
    */
   const dismissAlarm = useCallback(() => {
     stopAlarmSound();
@@ -190,6 +274,9 @@ export function AlarmProvider({ children }) {
           ...prev,
           status: 'armed',
           nextOccurrenceMs,
+          snoozeCount: 0,
+          snoozeDuration: null,
+          snoozeEndsAt: null,
         };
       }
 
@@ -198,6 +285,9 @@ export function AlarmProvider({ children }) {
         status: 'idle',
         enabled: false,
         nextOccurrenceMs: null,
+        snoozeCount: 0,
+        snoozeDuration: null,
+        snoozeEndsAt: null,
       };
     });
   }, []);
@@ -211,6 +301,7 @@ export function AlarmProvider({ children }) {
       return {
         ...prev,
         status: 'ringing',
+        snoozeEndsAt: null, // Clear active snooze deadline on resume
       };
     });
 
@@ -273,9 +364,11 @@ export function AlarmProvider({ children }) {
     armAlarm,
     disarmAlarm,
     dismissAlarm,
+    snoozeAlarm,
+    fastForwardSnooze,
+    updateAlarmChallenge,
     checkAlarmTrigger,
     stopSound,
-    stopAlarmSound: stopSound,
     isSoundPlaying,
   };
 
