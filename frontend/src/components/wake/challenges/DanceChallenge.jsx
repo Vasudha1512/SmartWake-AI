@@ -37,8 +37,10 @@ export default function DanceChallenge({ onComplete }) {
   const [activeMovementMs, setActiveMovementMs] = useState(0);
   const [isMoving, setIsMoving] = useState(false);
   const [motionScore, setMotionScore] = useState(0);
+  const [movementStatus, setMovementStatus] = useState('idle');
 
   const videoRef = useRef(null);
+  const overlayCanvasRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const animationFrameRef = useRef(null);
   const detectorRef = useRef(null);
@@ -48,7 +50,7 @@ export default function DanceChallenge({ onComplete }) {
 
   /**
    * Safely releases all active camera tracks, animation loops,
-   * audio synthesizer nodes, and detector buffers.
+   * audio synthesizer nodes, overlay canvas context, and detector buffers.
    */
   const stopAllResources = useCallback(() => {
     // 1. Cancel animation frame loop
@@ -75,10 +77,22 @@ export default function DanceChallenge({ onComplete }) {
       videoRef.current.srcObject = null;
     }
 
-    // 4. Stop Dance challenge music
+    // 4. Clear overlay canvas
+    if (overlayCanvasRef.current) {
+      try {
+        const ctx = overlayCanvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
+        }
+      } catch {
+        // Ignore canvas clear errors
+      }
+    }
+
+    // 5. Stop Dance challenge music
     stopDanceMusic();
 
-    // 5. Reset detector
+    // 6. Reset detector
     if (detectorRef.current) {
       detectorRef.current.reset();
     }
@@ -110,11 +124,15 @@ export default function DanceChallenge({ onComplete }) {
    * Motion analysis animation frame loop.
    * Samples video frames at browser's available refresh rate and passes
    * downsampled grayscale buffers to the motion detector.
+   *
+   * Renders the detected motion regions and bounding HUD strictly using
+   * real frame-difference data from motionDetector.js.
    */
   const startMotionLoop = useCallback(() => {
     const loop = (currentTimestamp) => {
       const video = videoRef.current;
       const detector = detectorRef.current;
+      const overlay = overlayCanvasRef.current;
 
       if (!video || !detector || hasCompletedRef.current) {
         return;
@@ -146,6 +164,109 @@ export default function DanceChallenge({ onComplete }) {
           setActiveMovementMs(result.accumulatedMs);
           setIsMoving(result.isMoving);
           setMotionScore(Math.round(result.motionScore));
+          setMovementStatus(result.movementStatus);
+
+          // Render real motion overlay on transparent canvas
+          if (overlay) {
+            if (overlay.width !== video.videoWidth || overlay.height !== video.videoHeight) {
+              overlay.width = video.videoWidth;
+              overlay.height = video.videoHeight;
+            }
+
+            const overlayCtx = overlay.getContext('2d');
+            if (overlayCtx) {
+              overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+              if (result.movementStatus === 'active') {
+                const w = overlay.width;
+                const h = overlay.height;
+
+                // 1. Translucent green highlight over actual detected motion cells
+                overlayCtx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+                overlayCtx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+                overlayCtx.lineWidth = 1.5;
+
+                for (const region of result.motionRegions) {
+                  const rx = region.x * w;
+                  const ry = region.y * h;
+                  const rw = region.width * w;
+                  const rh = region.height * h;
+                  overlayCtx.fillRect(rx, ry, rw, rh);
+                  overlayCtx.strokeRect(rx, ry, rw, rh);
+                }
+
+                // 2. High-tech corner-bracket bounding HUD around motionBounds
+                if (result.motionBounds) {
+                  const bx = result.motionBounds.x * w;
+                  const by = result.motionBounds.y * h;
+                  const bw = result.motionBounds.width * w;
+                  const bh = result.motionBounds.height * h;
+
+                  const bracketLen = Math.min(24, Math.min(bw, bh) * 0.35);
+                  overlayCtx.strokeStyle = '#22c55e';
+                  overlayCtx.lineWidth = 2.5;
+                  overlayCtx.lineCap = 'round';
+                  overlayCtx.lineJoin = 'round';
+
+                  // Top-left bracket
+                  overlayCtx.beginPath();
+                  overlayCtx.moveTo(bx, by + bracketLen);
+                  overlayCtx.lineTo(bx, by);
+                  overlayCtx.lineTo(bx + bracketLen, by);
+                  overlayCtx.stroke();
+
+                  // Top-right bracket
+                  overlayCtx.beginPath();
+                  overlayCtx.moveTo(bx + bw - bracketLen, by);
+                  overlayCtx.lineTo(bx + bw);
+                  overlayCtx.lineTo(bx + bw, by + bracketLen);
+                  overlayCtx.stroke();
+
+                  // Bottom-left bracket
+                  overlayCtx.beginPath();
+                  overlayCtx.moveTo(bx, by + bh - bracketLen);
+                  overlayCtx.lineTo(bx, by + bh);
+                  overlayCtx.lineTo(bx + bracketLen, by + bh);
+                  overlayCtx.stroke();
+
+                  // Bottom-right bracket
+                  overlayCtx.beginPath();
+                  overlayCtx.moveTo(bx + bw - bracketLen, by + bh);
+                  overlayCtx.lineTo(bx + bw, by + bh);
+                  overlayCtx.lineTo(bx + bw, by + bh - bracketLen);
+                  overlayCtx.stroke();
+
+                  // Subtle bounding box border
+                  overlayCtx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+                  overlayCtx.lineWidth = 1;
+                  overlayCtx.strokeRect(bx, by, bw, bh);
+
+                  // High-tech HUD motion label
+                  overlayCtx.font = 'bold 10px monospace';
+                  overlayCtx.fillStyle = '#22c55e';
+                  overlayCtx.fillText('ACTIVE MOTION', bx + 4, Math.max(12, by - 4));
+                }
+              } else if (result.movementStatus === 'low') {
+                const w = overlay.width;
+                const h = overlay.height;
+
+                // Subtle yellow highlight over actual low-motion regions (no fake bounding box)
+                overlayCtx.fillStyle = 'rgba(234, 179, 8, 0.2)';
+                overlayCtx.strokeStyle = 'rgba(234, 179, 8, 0.5)';
+                overlayCtx.lineWidth = 1;
+
+                for (const region of result.motionRegions) {
+                  const rx = region.x * w;
+                  const ry = region.y * h;
+                  const rw = region.width * w;
+                  const rh = region.height * h;
+                  overlayCtx.fillRect(rx, ry, rw, rh);
+                  overlayCtx.strokeRect(rx, ry, rw, rh);
+                }
+              }
+              // Idle state: overlayCtx.clearRect already leaves canvas 100% transparent.
+            }
+          }
 
           if (result.isCompleted && !hasCompletedRef.current) {
             hasCompletedRef.current = true;
@@ -172,6 +293,7 @@ export default function DanceChallenge({ onComplete }) {
     setActiveMovementMs(0);
     setIsMoving(false);
     setMotionScore(0);
+    setMovementStatus('idle');
     hasCompletedRef.current = false;
 
     // Initialize motion detector
@@ -213,6 +335,7 @@ export default function DanceChallenge({ onComplete }) {
     } catch (err) {
       stopAllResources();
       setChallengeState('error');
+      setMovementStatus('idle');
 
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setErrorMessage(
@@ -239,6 +362,7 @@ export default function DanceChallenge({ onComplete }) {
     setActiveMovementMs(0);
     setIsMoving(false);
     setMotionScore(0);
+    setMovementStatus('idle');
     setErrorMessage(null);
     hasCompletedRef.current = false;
   };
@@ -281,6 +405,15 @@ export default function DanceChallenge({ onComplete }) {
           aria-label="Live camera feed for movement detection"
         />
 
+        {/* Live Real Motion Detection Overlay Canvas */}
+        <canvas
+          ref={overlayCanvasRef}
+          className={`absolute inset-0 w-full h-full object-cover transform scale-x-[-1] pointer-events-none ${
+            challengeState === 'active' ? 'block' : 'hidden'
+          }`}
+          aria-hidden="true"
+        />
+
         {/* Live Camera Overlays (when active) */}
         {challengeState === 'active' && (
           <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3.5 bg-gradient-to-b from-black/40 via-transparent to-black/60">
@@ -307,18 +440,41 @@ export default function DanceChallenge({ onComplete }) {
                   role="status"
                   aria-live="polite"
                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-sm transition-colors ${
-                    isMoving
+                    movementStatus === 'active'
                       ? 'bg-emerald-500 text-white'
-                      : 'bg-amber-500 text-slate-950'
+                      : movementStatus === 'low'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'bg-rose-950/80 text-rose-200 border border-rose-500/40 backdrop-blur-xs'
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${isMoving ? 'bg-white animate-ping' : 'bg-slate-950'}`} />
-                  <span>{isMoving ? 'Active Dancing!' : 'Move to the Beat!'}</span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      movementStatus === 'active'
+                        ? 'bg-white animate-ping'
+                        : movementStatus === 'low'
+                        ? 'bg-slate-950'
+                        : 'bg-rose-400'
+                    }`}
+                  />
+                  <span>
+                    {movementStatus === 'active'
+                      ? 'Active Movement Detected'
+                      : movementStatus === 'low'
+                      ? 'Low Movement — Keep Moving'
+                      : 'No Movement Detected'}
+                  </span>
                 </div>
 
-                <span className="text-[11px] font-mono text-white/90 bg-black/50 px-2 py-0.5 rounded backdrop-blur-xs">
-                  Motion: {motionScore} (min {MOTION_THRESHOLD})
-                </span>
+                <div className="flex items-center gap-2">
+                  {movementStatus === 'idle' && (
+                    <span className="text-[11px] font-semibold text-amber-300 bg-black/50 px-2 py-0.5 rounded backdrop-blur-xs">
+                      Move to continue
+                    </span>
+                  )}
+                  <span className="text-[11px] font-mono text-white/90 bg-black/50 px-2 py-0.5 rounded backdrop-blur-xs">
+                    Motion: {motionScore} (min {MOTION_THRESHOLD})
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -405,8 +561,16 @@ export default function DanceChallenge({ onComplete }) {
 
           <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
             <span>Deterministic rule: 10.0s active body motion</span>
-            <span className={isMoving ? 'text-emerald-600 font-bold' : 'text-slate-500'}>
-              {isMoving ? '● Accumulating progress' : '○ Stand in view & move'}
+            <span
+              className={
+                movementStatus === 'active'
+                  ? 'text-emerald-600 font-bold'
+                  : 'text-slate-500'
+              }
+            >
+              {movementStatus === 'active'
+                ? '● Accumulating progress'
+                : 'Move to continue'}
             </span>
           </div>
         </div>

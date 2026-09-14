@@ -9,10 +9,13 @@
  */
 
 export const MOTION_THRESHOLD = 12;
+export const LOW_MOTION_THRESHOLD = 4;
 export const TARGET_ACTIVE_MOVEMENT_MS = 10000;
 export const FRAME_WIDTH = 64;
 export const FRAME_HEIGHT = 48;
 export const MAX_FRAME_DELTA_MS = 100;
+export const GRID_COLS = 16;
+export const GRID_ROWS = 12;
 
 /**
  * Converts an ImageData (RGBA) buffer into a compact 8-bit grayscale array.
@@ -101,6 +104,9 @@ export function createMotionDetector(options = {}) {
      * @returns {{
      *   isMoving: boolean,
      *   motionScore: number,
+     *   movementStatus: 'active' | 'low' | 'idle',
+     *   motionRegions: Array<{ x: number, y: number, width: number, height: number, intensity: number }>,
+     *   motionBounds: { x: number, y: number, width: number, height: number } | null,
      *   accumulatedMs: number,
      *   progress: number,
      *   isCompleted: boolean
@@ -111,6 +117,9 @@ export function createMotionDetector(options = {}) {
         return {
           isMoving: false,
           motionScore: lastMotionScore,
+          movementStatus: 'idle',
+          motionRegions: [],
+          motionBounds: null,
           accumulatedMs: accumulatedActiveMs,
           progress: 1,
           isCompleted: true,
@@ -124,14 +133,35 @@ export function createMotionDetector(options = {}) {
         return {
           isMoving: false,
           motionScore: 0,
+          movementStatus: 'idle',
+          motionRegions: [],
+          motionBounds: null,
           accumulatedMs: accumulatedActiveMs,
           progress: accumulatedActiveMs / targetMs,
           isCompleted: false,
         };
       }
 
-      // Calculate pixel-differencing motion score
-      const motionScore = calculateMotionScore(currentPixels, prevFrame);
+      // Calculate pixel-differencing motion score & cell deltas across 16x12 grid
+      const length = currentPixels.length;
+      let totalDiff = 0;
+      const cellW = Math.max(1, Math.floor(width / GRID_COLS));
+      const cellH = Math.max(1, Math.floor(height / GRID_ROWS));
+      const pixelsPerCell = cellW * cellH;
+      const cellDiffs = new Uint32Array(GRID_COLS * GRID_ROWS);
+
+      for (let i = 0; i < length; i++) {
+        const diff = Math.abs(currentPixels[i] - prevFrame[i]);
+        totalDiff += diff;
+
+        const px = i % width;
+        const py = (i / width) | 0;
+        const col = Math.min(GRID_COLS - 1, (px / cellW) | 0);
+        const row = Math.min(GRID_ROWS - 1, (py / cellH) | 0);
+        cellDiffs[row * GRID_COLS + col] += diff;
+      }
+
+      const motionScore = totalDiff / length;
       lastMotionScore = motionScore;
 
       // Update baseline for next frame
@@ -140,6 +170,96 @@ export function createMotionDetector(options = {}) {
       // Clamp elapsed time to prevent burst credit from tab throttling or lag spikes
       const effectiveDeltaMs = Math.max(0, Math.min(actualDeltaMs, maxDeltaMs));
       const isMoving = motionScore >= threshold;
+
+      // Determine movement status
+      let movementStatus = 'idle';
+      if (isMoving) {
+        movementStatus = 'active';
+      } else if (motionScore >= LOW_MOTION_THRESHOLD) {
+        movementStatus = 'low';
+      } else {
+        movementStatus = 'idle';
+      }
+
+      // Calculate motion regions and bounds strictly from actual frame difference
+      const motionRegions = [];
+      let motionBounds = null;
+
+      if (movementStatus === 'active') {
+        let minCol = GRID_COLS;
+        let maxCol = -1;
+        let minRow = GRID_ROWS;
+        let maxRow = -1;
+
+        for (let r = 0; r < GRID_ROWS; r++) {
+          for (let c = 0; c < GRID_COLS; c++) {
+            const cellMean = cellDiffs[r * GRID_COLS + c] / pixelsPerCell;
+            if (cellMean >= threshold) {
+              motionRegions.push({
+                x: c / GRID_COLS,
+                y: r / GRID_ROWS,
+                width: 1 / GRID_COLS,
+                height: 1 / GRID_ROWS,
+                intensity: Math.min(1, cellMean / 60),
+              });
+              if (c < minCol) minCol = c;
+              if (c > maxCol) maxCol = c;
+              if (r < minRow) minRow = r;
+              if (r > maxRow) maxRow = r;
+            }
+          }
+        }
+
+        // Safeguard: if overall motionScore >= threshold but individual cells were slightly below threshold,
+        // ensure active cells are captured using proportional cell threshold
+        if (motionRegions.length === 0) {
+          const activeCellThreshold = Math.max(LOW_MOTION_THRESHOLD, threshold * 0.75);
+          for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+              const cellMean = cellDiffs[r * GRID_COLS + c] / pixelsPerCell;
+              if (cellMean >= activeCellThreshold) {
+                motionRegions.push({
+                  x: c / GRID_COLS,
+                  y: r / GRID_ROWS,
+                  width: 1 / GRID_COLS,
+                  height: 1 / GRID_ROWS,
+                  intensity: Math.min(1, cellMean / 60),
+                });
+                if (c < minCol) minCol = c;
+                if (c > maxCol) maxCol = c;
+                if (r < minRow) minRow = r;
+                if (r > maxRow) maxRow = r;
+              }
+            }
+          }
+        }
+
+        if (motionRegions.length > 0) {
+          motionBounds = {
+            x: minCol / GRID_COLS,
+            y: minRow / GRID_ROWS,
+            width: (maxCol - minCol + 1) / GRID_COLS,
+            height: (maxRow - minRow + 1) / GRID_ROWS,
+          };
+        }
+      } else if (movementStatus === 'low') {
+        for (let r = 0; r < GRID_ROWS; r++) {
+          for (let c = 0; c < GRID_COLS; c++) {
+            const cellMean = cellDiffs[r * GRID_COLS + c] / pixelsPerCell;
+            if (cellMean >= LOW_MOTION_THRESHOLD) {
+              motionRegions.push({
+                x: c / GRID_COLS,
+                y: r / GRID_ROWS,
+                width: 1 / GRID_COLS,
+                height: 1 / GRID_ROWS,
+                intensity: Math.min(1, cellMean / 60),
+              });
+            }
+          }
+        }
+        // For 'low' movement status, motionBounds remains null as per spec (no fake bounding box)
+        motionBounds = null;
+      }
 
       if (isMoving && effectiveDeltaMs > 0) {
         accumulatedActiveMs = Math.min(targetMs, accumulatedActiveMs + effectiveDeltaMs);
@@ -151,6 +271,9 @@ export function createMotionDetector(options = {}) {
       return {
         isMoving,
         motionScore,
+        movementStatus,
+        motionRegions,
+        motionBounds,
         accumulatedMs: accumulatedActiveMs,
         progress: Math.min(1, accumulatedActiveMs / targetMs),
         isCompleted,
