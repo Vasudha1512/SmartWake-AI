@@ -46,5 +46,6 @@ ml/models/*.onnx
 logs/
 temp/
 tmp/
+scratch/
 .DS_Store
 Thumbs.db
