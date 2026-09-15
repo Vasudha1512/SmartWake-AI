@@ -25,6 +25,39 @@ class Settings:
     GENAI_MAX_RETRIES: int = int(os.getenv("GENAI_MAX_RETRIES", "1"))
     GENAI_TEMPERATURE: float = float(os.getenv("GENAI_TEMPERATURE", "0.7"))
 
+    # Authentication & Security Configuration
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def validate_auth_config(self) -> None:
+        """Validate that authentication configuration is securely set.
+
+        Raises:
+            ValueError: If JWT_SECRET_KEY is missing or less than 32 characters,
+                        ACCESS_TOKEN_EXPIRE_MINUTES is not > 0,
+                        or JWT_ALGORITHM is not HS256.
+        """
+        secret = self.JWT_SECRET_KEY.strip() if self.JWT_SECRET_KEY else ""
+        if not secret or len(secret) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY environment variable is required and must be at least 32 characters. "
+                "Please configure a secure JWT_SECRET_KEY in your environment or .env file."
+            )
+        if not isinstance(self.ACCESS_TOKEN_EXPIRE_MINUTES, int) or self.ACCESS_TOKEN_EXPIRE_MINUTES <= 0:
+            raise ValueError(
+                "ACCESS_TOKEN_EXPIRE_MINUTES must be an integer greater than 0."
+            )
+        if self.JWT_ALGORITHM != "HS256":
+            raise ValueError(
+                "Authentication strictly supports HS256 algorithm only."
+            )
+
+
     @property
     def masked_genai_api_key(self) -> str:
         """Return masked API key for safe telemetry, logging, and health responses."""

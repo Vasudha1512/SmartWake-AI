@@ -135,3 +135,21 @@ def get_user_by_username(db: Session, username: str) -> Optional[User]:
     """
     stmt = select(User).where(User.username == username.strip())
     return db.execute(stmt).scalar_one_or_none()
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    """Retrieve a user by their unique email address.
+
+    Args:
+        db: Active SQLAlchemy database session.
+        email: User email address.
+
+    Returns:
+        The User instance if found, otherwise None.
+    """
+    clean_email = email.strip().lower() if email else ""
+    if not clean_email:
+        return None
+    stmt = select(User).where(User.email == clean_email)
+    return db.execute(stmt).scalar_one_or_none()
+

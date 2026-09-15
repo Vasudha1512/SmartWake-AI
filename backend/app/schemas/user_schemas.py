@@ -41,7 +41,9 @@ class UserResponse(BaseModel):
     username: str
     email: Optional[str] = None
     timezone: str
+    is_active: bool = True
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+

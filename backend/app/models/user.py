@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.datetime_utils import now_utc_naive
@@ -19,7 +19,9 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
-    email: Mapped[Optional[str]] = mapped_column(String(120), unique=True, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(120), unique=True, nullable=True, index=True)
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

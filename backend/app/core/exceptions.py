@@ -6,6 +6,19 @@ class SmartWakeException(Exception):
     pass
 
 
+SmartWakeAppException = SmartWakeException
+
+
+class AuthenticationError(SmartWakeException):
+    """Raised when authentication fails due to invalid or missing credentials."""
+    pass
+
+
+class InvalidTokenError(AuthenticationError):
+    """Raised when an authentication token is malformed, expired, or invalid."""
+    pass
+
+
 class UserNotFoundError(SmartWakeException):
     """Raised when a requested user does not exist."""
     pass
@@ -14,6 +27,7 @@ class UserNotFoundError(SmartWakeException):
 class UserAlreadyExistsError(SmartWakeException):
     """Raised when attempting to create a user with a duplicate username or email."""
     pass
+
 
 
 class InvalidChallengeTypeError(SmartWakeException):
