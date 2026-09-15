@@ -91,6 +91,8 @@ export default function AlarmForm() {
           if (errors.time) setErrors((prev) => ({ ...prev, time: null }));
         }}
         error={errors.time}
+        selectedDays={selectedDays}
+        timezone={timezone}
       />
 
       {/* 2. Repeat Days with Quick Presets */}
